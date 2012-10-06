@@ -2,7 +2,7 @@
 
 	remoteStorage.defineModule('myfavouritedrinks', function(privateClient) {
 		
-		privateClient.sync('');
+		privateClient.use('');
 		
 		return {
 			exports: {
