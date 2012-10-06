@@ -1,3 +1,13 @@
-ul span {
-	cursor: pointer;
-}
+html { background:#000; }
+body { width:480px; margin:50px; padding:0; color:#fff; font:normal 1.5em/150% FreeSans,Helvetica,sans-serif; }
+
+#background { width:100%; position:fixed; top:-100px; left:0; z-index:-1; }
+#background-credit { position:absolute; bottom:5px; right:10px; font-size:10px; opacity:.3; white-space:nowrap; }
+#background-credit a { color:#fff; }
+
+#add-drink { position:relative; }
+#add-drink input { width:90%; padding:10px; font-size:24px; }
+#add-drink button { position:absolute; right:0; top:0; padding:10px; font-size:24px; }
+
+li span { cursor:pointer; display:none; }
+li:hover span { display:inline; }
