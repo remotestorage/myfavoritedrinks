@@ -1,6 +1,6 @@
 (function() {
 
-	remoteStorage.defineModule('myfavouritedrinks', function(privateClient) {
+	remoteStorage.defineModule('myfavoritedrinks', function(privateClient) {
 		
 		privateClient.use('');
 		

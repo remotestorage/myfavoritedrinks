@@ -16,10 +16,10 @@
 		inputElement = formElement.getElementsByTagName('input')[0];
 		ulElement = document.getElementById('drink-list');
 
-		remoteStorage.claimAccess('myfavouritedrinks', 'rw');
+		remoteStorage.claimAccess('myfavoritedrinks', 'rw');
 		remoteStorage.displayWidget('remotestorage-connect');
 
-		var drinks = remoteStorage.myfavouritedrinks.listDrinks();
+		var drinks = remoteStorage.myfavoritedrinks.listDrinks();
 		for(var drinkId in drinks) {
 			displayDrink(drinkId, drinks[drinkId].name);
 		}
@@ -42,20 +42,20 @@
 			inputElement.value = '';
 		});
 
-		remoteStorage.myfavouritedrinks.on('add', function(event) {
+		remoteStorage.myfavoritedrinks.on('add', function(event) {
 			displayDrink(event.id, event.newValue.name);
 		});
-		remoteStorage.myfavouritedrinks.on('remove', function(event) {
+		remoteStorage.myfavoritedrinks.on('remove', function(event) {
 			undisplayDrink(event.id);
 		});
 	}
 
 	function addDrink(name) {
-		remoteStorage.myfavouritedrinks.addDrink(name);
+		remoteStorage.myfavoritedrinks.addDrink(name);
 	}
 
 	function removeDrink(id) {
-		remoteStorage.myfavouritedrinks.removeDrink(id);
+		remoteStorage.myfavoritedrinks.removeDrink(id);
 	}
 
 	function displayDrink(id, name) {
