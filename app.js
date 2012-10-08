@@ -42,11 +42,15 @@
 			inputElement.value = '';
 		});
 
-		remoteStorage.myfavoritedrinks.on('add', function(event) {
-			displayDrink(event.id, event.newValue.name);
-		});
-		remoteStorage.myfavoritedrinks.on('remove', function(event) {
-			undisplayDrink(event.id);
+		remoteStorage.myfavoritedrinks.on('change', function(event) {
+			// add
+			if(event.newValue && (! event.oldValue)) {
+				displayDrink(event.relativePath, event.newValue.name);
+			}
+			// remove
+			else if((! event.newValue) && event.oldValue) {
+				undisplayDrink(event.relativePath);
+			}
 		});
 	}
 

@@ -7,30 +7,7 @@
 		return {
 			exports: {
 				
-				on: function(eventName, callback) {
-					var changeHandler;
-					if(eventName === 'add') {
-						changeHandler = function(event) {
-							if(event.newValue && (! event.oldValue)) {
-								callback(event);
-							}
-						};
-					} else if(eventName === 'remove') {
-						changeHandler = function(event) {
-							if((! event.newValue) && event.oldValue) {
-								callback(event);
-							}
-						};
-					} else { throw "No!@!!!!!"; }
-					privateClient.on('change', function(_event) {
-						var event = {};
-						for(var key in _event) {
-							event[key] = _event[key];
-						}
-						event.id = event.path.match(/([^\/]+)$/)[1];
-						changeHandler(event);
-					});
-				},
+				on: privateClient.on,
 				
 				addDrink: function(name) {
 					var id = encodeURIComponent(name);
@@ -39,9 +16,7 @@
 					});
 				},
 				
-				removeDrink: function(id) {
-					privateClient.remove(id);
-				},
+				removeDrink: privateClient.remove,
 				
 				listDrinks: function() {
 					var idList = privateClient.getListing('');
