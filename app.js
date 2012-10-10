@@ -63,10 +63,14 @@
 	}
 
 	function displayDrink(id, name) {
-		var liElement = document.createElement('li');
-		liElement.id = prefixId(id);
-		liElement.innerHTML = name + ' <span>×</span>';
-		ulElement.appendChild(liElement);
+    var domID = prefixId(id);
+		var liElement = document.getElementById(domID);
+    if(! liElement) {
+      liElement = document.createElement('li');
+		  liElement.id = domID;
+		  ulElement.appendChild(liElement);
+    }
+		liElement.innerHTML = name + ' <span title="Delete">×</span>';
 	}
 
 	function undisplayDrink(id) {

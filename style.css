@@ -10,4 +10,4 @@ body { width:480px; margin:50px; padding:0; color:#fff; font:normal 1.5em/150% F
 #add-drink button { position:absolute; right:0; top:0; padding:10px; font-size:24px; }
 
 li span { cursor:pointer; opacity:.3; }
-li:hover span { opacity:1; }
+li span:hover { opacity:1; }
