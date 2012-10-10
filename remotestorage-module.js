@@ -3,6 +3,10 @@
 	remoteStorage.defineModule('myfavoritedrinks', function(privateClient) {
 		
 		privateClient.use('');
+
+    function idFromPath(path) {
+      return path.split('/').slice(-1)[0];
+    }
 		
 		return {
 			exports: {
@@ -19,13 +23,15 @@
 				removeDrink: privateClient.remove,
 				
 				listDrinks: function() {
-					var idList = privateClient.getListing('');
-					var result = {};
-					idList.forEach(function(id) {
-						result[id] = privateClient.getObject(id);
-					});
-					return result;
-				}
+          var _drinks = privateClient.getAll('');
+          var drinks = {}
+          for(var path in _drinks) {
+            drinks[idFromPath(path)] = _drinks[path];
+          }
+          return drinks;
+				},
+
+        c: privateClient
 				
 			}
 		};
