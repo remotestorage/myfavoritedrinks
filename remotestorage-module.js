@@ -4,9 +4,9 @@
 		
 		privateClient.use('');
 
-    function idFromPath(path) {
-      return path.split('/').slice(-1)[0];
-    }
+		function idFromPath(path) {
+			return path.split('/').slice(-1)[0];
+		}
 		
 		return {
 			exports: {
@@ -23,15 +23,15 @@
 				removeDrink: privateClient.remove,
 				
 				listDrinks: function() {
-          var _drinks = privateClient.getAll('');
-          var drinks = {}
-          for(var path in _drinks) {
-            drinks[idFromPath(path)] = _drinks[path];
-          }
-          return drinks;
+					var _drinks = privateClient.getAll('');
+					var drinks = {};
+					for(var path in _drinks) {
+						drinks[idFromPath(path)] = _drinks[path];
+					}
+					return drinks;
 				},
-
-        c: privateClient
+				
+				c: privateClient
 				
 			}
 		};

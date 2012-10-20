@@ -63,13 +63,13 @@
 	}
 
 	function displayDrink(id, name) {
-    var domID = prefixId(id);
+		var domID = prefixId(id);
 		var liElement = document.getElementById(domID);
-    if(! liElement) {
-      liElement = document.createElement('li');
-		  liElement.id = domID;
-		  ulElement.appendChild(liElement);
-    }
+		if(! liElement) {
+			liElement = document.createElement('li');
+			liElement.id = domID;
+			ulElement.appendChild(liElement);
+		}
 		liElement.innerHTML = name + ' <span title="Delete">×</span>';
 	}
 
