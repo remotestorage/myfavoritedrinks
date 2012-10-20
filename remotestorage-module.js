@@ -29,9 +29,7 @@
 						drinks[idFromPath(path)] = _drinks[path];
 					}
 					return drinks;
-				},
-				
-				c: privateClient
+				}
 				
 			}
 		};
