@@ -10,7 +10,7 @@
 				on: privateClient.on,
 				
 				addDrink: function(name) {
-					var id = encodeURIComponent(name);
+					var id = name.toLowerCase().replace(/\s/g, '-');
 					privateClient.storeObject('drink', id, {
 						name: name
 					});
