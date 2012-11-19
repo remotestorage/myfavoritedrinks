@@ -4,6 +4,8 @@
 	var ulElement;
 	var drinkRowPrefix = 'drinkrow-';
 
+  remoteStorage.util.setLogLevel('debug');
+
 	function prefixId(id) {
 		return drinkRowPrefix + id;
 	}
@@ -19,10 +21,13 @@
 		remoteStorage.claimAccess('myfavoritedrinks', 'rw');
 		remoteStorage.displayWidget('remotestorage-connect');
 
-		var drinks = remoteStorage.myfavoritedrinks.listDrinks();
-		for(var drinkId in drinks) {
-			displayDrink(drinkId, drinks[drinkId].name);
-		}
+		remoteStorage.myfavoritedrinks.
+      listDrinks().
+      then(function(drinks) {
+        for(var drinkId in drinks) {
+			    displayDrink(drinkId, drinks[drinkId].name);
+		    }
+      });
 
 		remoteStorage.onWidget('state', function(state) {
 			if(state === 'disconnected') {
