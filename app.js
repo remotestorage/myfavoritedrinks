@@ -21,13 +21,12 @@
 		remoteStorage.claimAccess('myfavoritedrinks', 'rw');
 		remoteStorage.displayWidget('remotestorage-connect');
 
-		remoteStorage.myfavoritedrinks.
-      listDrinks().
-      then(function(drinks) {
-        for(var drinkId in drinks) {
-			    displayDrink(drinkId, drinks[drinkId].name);
-		    }
-      });
+		remoteStorage.myfavoritedrinks.listDrinks()
+			.then(function(drinks) {
+				for(var drinkId in drinks) {
+					displayDrink(drinkId, drinks[drinkId].name);
+				}
+			});
 
 		remoteStorage.onWidget('state', function(state) {
 			if(state === 'disconnected') {
