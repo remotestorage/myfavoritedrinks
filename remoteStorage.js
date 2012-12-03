@@ -4362,6 +4362,113 @@ define('lib/sync',[
 
 });
 
+define('lib/schedule',['./util', './sync'], function(util, sync) {
+
+  var logger = util.getLogger('schedule');
+
+  var watchedPaths = {};
+  var lastPathSync = {};
+  var runInterval = 30000;
+  var enabled = false;
+  var timer = null;
+
+  function scheduleNextRun() {
+    timer = setTimeout(run, runInterval);
+  }
+
+  function run() {
+    if(! enabled) {
+      return;
+    }
+    if(timer) {
+      clearTimeout(timer);
+    }
+
+    logger.info('check');
+
+    var syncNow = [];
+    var syncedCount = 0;
+
+    var now = new Date().getTime();
+
+    // assemble list of paths that need action
+    for(var p in watchedPaths) {
+      var lastSync = lastPathSync[p];
+      if((! lastSync) || (lastSync + watchedPaths[p]) <= now) {
+        syncNow.push(p);
+      }
+    }
+
+    if(syncNow.length === 0) {
+      scheduleNextRun();
+      return;
+    }
+
+    logger.info("Paths to refresh: ", syncNow);
+
+    // request a sync for each path
+    var numSyncNow = syncNow.length;
+    for(var i=0;i<numSyncNow;i++) {
+      var path = syncNow[i];
+      var syncer = function(path, cb) {
+        if(path == '/') {
+          sync.fullSync(cb);
+        } else {
+          sync.partialSync(path, null, cb);
+        }
+      };
+      syncer(path, function() {
+        lastPathSync[path] = new Date().getTime();
+
+        syncedCount++;
+
+        if(syncedCount == syncNow.length) {
+          scheduleNextRun();
+        }
+      });
+    }
+  }
+
+  return {
+
+    enable: function() {
+      enabled = true;
+      logger.info('enabled');
+      scheduleNextRun();
+    },
+
+    disable: function() {
+      enabled = false;
+      logger.info('disabled');
+    },
+
+    watch: function(path, interval) {
+      watchedPaths[path] = interval;
+      if(! lastPathSync[path]) {
+        // mark path as synced now, so it won't get synced on the next scheduler
+        // cycle, but instead when it's interval has passed.
+        lastPathSync[path] = new Date().getTime();
+      }
+    },
+
+    unwatch: function(path) {
+      delete watchedPaths[path];
+      delete lastPathSync[path];
+    },
+
+    reset: function() {
+      watchedPaths = {};
+      lastPathSync = {};
+      if(timer) {
+        clearTimeout(timer);
+        timer = null;
+      }
+    }
+
+  };
+
+});
+
 /**
  * JSONSchema Validator - Validates JavaScript objects using JSON Schemas
  *	(http://www.json.com/json-schema-proposal/)
@@ -4797,7 +4904,6 @@ define('lib/baseClient',[
     var moduleName = extractModuleName(event.path);
     var isPublic = isPublicRE.test(event.path);
     var eventEmitter = moduleEvents[moduleName] && moduleEvents[moduleName][isPublic];
-    console.log("EVENT EMITTER", eventEmitter);
     if(eventEmitter && eventEmitter.hasHandler('conflict')) {
       fireModuleEvent('conflict', moduleName, event);
       fireModuleEvent('conflict', 'root', event);
@@ -6050,9 +6156,10 @@ define('lib/widget',[
   './webfinger',
   './wireClient',
   './sync',
+  './schedule',
   './baseClient',
   './widget/default'
-], function(util, webfinger, wireClient, sync, BaseClient, defaultView) {
+], function(util, webfinger, wireClient, sync, schedule, BaseClient, defaultView) {
 
   // Namespace: widget
   //
@@ -6104,7 +6211,7 @@ define('lib/widget',[
       then(wireClient.setStorageInfo).
       get('properties').get('auth-endpoint').
       then(requestToken).
-      then(undefined, util.curry(setState, 'error'));
+      then(schedule.enable, util.curry(setState, 'error'));
   }
 
   function reconnectStorage() {
@@ -6112,6 +6219,7 @@ define('lib/widget',[
   }
 
   function disconnectStorage() {
+    schedule.disable();
     remoteStorage.flushLocal();
     events.emit('state', 'disconnected');
   }
@@ -6169,12 +6277,16 @@ define('lib/widget',[
   }
 
   function handleSyncTimeout() {
+    schedule.disable();
     setState('offline');
   }
 
   function initialSync() {
     setState('busy', true);
-    sync.forceSync().then(util.curry(events.emit, 'ready'));
+    sync.forceSync().then(function() {
+      schedule.enable();
+      events.emit('ready');
+    });
   }
 
   function display(_remoteStorage, domId, options) {
@@ -6183,6 +6295,8 @@ define('lib/widget',[
     if(! options) {
       options = {};
     }
+
+    schedule.watch('/', 30000);
 
     view.display(domId, options);
 
@@ -6729,6 +6843,7 @@ define('remoteStorage',[
       store.forgetAll();
       sync.clearSettings();
       widget.clearSettings();
+      schedule.reset();
       wireClient.disconnectRemote();
     },
 
