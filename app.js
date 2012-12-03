@@ -1,92 +1,99 @@
 (function() {
-	var inputElement;
-	var formElement;
-	var ulElement;
-	var drinkRowPrefix = 'drinkrow-';
+  var inputElement;
+  var formElement;
+  var ulElement;
+  var drinkRowPrefix = 'drinkrow-';
 
   remoteStorage.util.setLogLevel('debug');
 
-	function prefixId(id) {
-		return drinkRowPrefix + id;
-	}
-	function unprefixId(prefixedId) {
-		return prefixedId.replace(drinkRowPrefix, '');
-	}
+  remoteStorage.util.silenceAllLoggers();
 
-	function init() {
-		formElement = document.getElementById('add-drink');
-		inputElement = formElement.getElementsByTagName('input')[0];
-		ulElement = document.getElementById('drink-list');
+  remoteStorage.util.unsilenceLogger('sync', 'store');
 
-		remoteStorage.claimAccess('myfavoritedrinks', 'rw');
-		remoteStorage.displayWidget('remotestorage-connect');
+  function prefixId(id) {
+    return drinkRowPrefix + id;
+  }
+  function unprefixId(prefixedId) {
+    return prefixedId.replace(drinkRowPrefix, '');
+  }
 
-		remoteStorage.myfavoritedrinks.listDrinks()
-			.then(function(drinks) {
-				for(var drinkId in drinks) {
-					displayDrink(drinkId, drinks[drinkId].name);
-				}
-			});
+  function init() {
+    formElement = document.getElementById('add-drink');
+    inputElement = formElement.getElementsByTagName('input')[0];
+    ulElement = document.getElementById('drink-list');
 
-		remoteStorage.onWidget('state', function(state) {
-			if(state === 'disconnected') {
-				emptyDrinks();
-			}
-		});
+    remoteStorage.claimAccess('myfavoritedrinks', 'rw').
+      then(function() {
+        remoteStorage.displayWidget('remotestorage-connect');
 
-		ulElement.addEventListener('click', function(event) {
-			if(event.target.tagName === 'SPAN') {
-				removeDrink(unprefixId(event.target.parentNode.id));
-			}
-		});
+        remoteStorage.myfavoritedrinks.listDrinks().then(displayDrinks);
 
-		formElement.addEventListener('submit', function(event) {
-			event.preventDefault();
-			addDrink(inputElement.value);
-			inputElement.value = '';
-		});
+        remoteStorage.onWidget('state', function(state) {
+          if(state === 'disconnected') {
+            emptyDrinks();
+          }
+        });
 
-		remoteStorage.myfavoritedrinks.on('change', function(event) {
-			// add
-			if(event.newValue && (! event.oldValue)) {
-				displayDrink(event.relativePath, event.newValue.name);
-			}
-			// remove
-			else if((! event.newValue) && event.oldValue) {
-				undisplayDrink(event.relativePath);
-			}
-		});
-	}
+        ulElement.addEventListener('click', function(event) {
+          if(event.target.tagName === 'SPAN') {
+            removeDrink(unprefixId(event.target.parentNode.id));
+          }
+        });
 
-	function addDrink(name) {
-		remoteStorage.myfavoritedrinks.addDrink(name);
-	}
+        formElement.addEventListener('submit', function(event) {
+          event.preventDefault();
+          addDrink(inputElement.value);
+          inputElement.value = '';
+        });
 
-	function removeDrink(id) {
-		remoteStorage.myfavoritedrinks.removeDrink(id);
-	}
+        remoteStorage.myfavoritedrinks.on('change', function(event) {
+          // add
+          if(event.newValue && (! event.oldValue)) {
+            displayDrink(event.relativePath, event.newValue.name);
+          }
+          // remove
+          else if((! event.newValue) && event.oldValue) {
+            undisplayDrink(event.relativePath);
+          }
+        });
+      });
+  }
 
-	function displayDrink(id, name) {
-		var domID = prefixId(id);
-		var liElement = document.getElementById(domID);
-		if(! liElement) {
-			liElement = document.createElement('li');
-			liElement.id = domID;
-			ulElement.appendChild(liElement);
-		}
-		liElement.innerHTML = name + ' <span title="Delete">×</span>';
-	}
+  function addDrink(name) {
+    remoteStorage.myfavoritedrinks.addDrink(name);
+  }
 
-	function undisplayDrink(id) {
-		var elem = document.getElementById(prefixId(id));
-		ulElement.removeChild(elem);
-	}
+  function removeDrink(id) {
+    remoteStorage.myfavoritedrinks.removeDrink(id);
+  }
 
-	function emptyDrinks() {
-		ulElement.innerHTML = '';
-		inputElement.value = '';
-	}
+  function displayDrinks(drinks) {
+    for(var drinkId in drinks) {
+      displayDrink(drinkId, drinks[drinkId].name);
+    }    
+  }
 
-	document.addEventListener('DOMContentLoaded', init);
+  function displayDrink(id, name) {
+    var domID = prefixId(id);
+    var liElement = document.getElementById(domID);
+    if(! liElement) {
+      liElement = document.createElement('li');
+      liElement.id = domID;
+      ulElement.appendChild(liElement);
+    }
+    liElement.innerHTML = name + ' <span title="Delete">×</span>';
+  }
+
+  function undisplayDrink(id) {
+    var elem = document.getElementById(prefixId(id));
+    ulElement.removeChild(elem);
+  }
+
+  function emptyDrinks() {
+    ulElement.innerHTML = '';
+    inputElement.value = '';
+  }
+
+  document.addEventListener('DOMContentLoaded', init);
 
 })();
