@@ -6,9 +6,9 @@
 
   remoteStorage.util.setLogLevel('debug');
 
-  remoteStorage.util.silenceAllLoggers();
+  // remoteStorage.util.silenceAllLoggers();
 
-  remoteStorage.util.unsilenceLogger('sync', 'store');
+  // remoteStorage.util.unsilenceLogger('sync', 'store');
 
   function prefixId(id) {
     return drinkRowPrefix + id;

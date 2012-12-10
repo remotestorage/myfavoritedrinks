@@ -1090,7 +1090,7 @@ define('lib/util',[], function() {
           }
         }
         function failOne(error) {
-          console.error("asyncGroup part failed: ", error.stack || error);
+          console.error("asyncGroup part failed: ", (error && error.stack) || error);
           errors.push(error);
           finishOne();
         }
@@ -3804,6 +3804,10 @@ define('lib/store/indexedDb',[
           logger.debug("Upgrade database: ", db);
           db.createObjectStore(OBJECT_STORE_NAME, { keyPath: 'key' });
         }
+
+        dbRequest.onupgradeneeded = function(event) {
+          upgrade(event.target.result);
+        };
         
         dbRequest.onsuccess = function(event) {
           logger.debug("DB REQUEST SUCCESS", event);
@@ -3830,9 +3834,6 @@ define('lib/store/indexedDb',[
             } else {
               // assume onupgradeneeded is supported.
               logger.debug("onupgradeneeded supported");
-              dbRequest.onupgradeneeded = function(event) {
-                upgrade(event.target.result);
-              };
               promise.fulfill(database);
             }
           } catch(exc) {
@@ -3910,12 +3911,14 @@ define('lib/store/indexedDb',[
   };
 
   adapter.detect = function() {
-    var indexedDB = undefined;
+    var indexedDB;
     if(typeof(window) !== 'undefined') {
+      // indexedDB = (window.indexedDB || window.webkitIndexedDB ||
+      //              window.mozIndexedDB || window.msIndexedDB);
       if(window.webkitIndexedDB) {
         window.shimIndexedDB.__useShim();
-        return window.indexedDB;
       }
+      indexedDB = window.indexedDB;
     }
     return indexedDB;
   };
@@ -3950,6 +3953,7 @@ define('lib/store/webSql',[
     function openDatabase() {
       logger.info('Opening database...');
       DB = window.openDatabase(DB_NAME, DB_VERSION, DB_HINT, DB_SIZE);
+      logger.info("DB is ", DB);
       return executeWrite("CREATE TABLE IF NOT EXISTS nodes (key, meta, data)").
         then(function() {
           logger.info("Database opened.", DB);
@@ -3957,6 +3961,8 @@ define('lib/store/webSql',[
             logger.info("FLUSHING!");
             tempAdapter.replaceWith(webSqlStore);
           }
+        }, function() {
+          logger.error("OPEN DB FAILED", arguments);
         });
     }
 
@@ -4051,7 +4057,7 @@ define('lib/store',[
   // Namespace: store
   //
   // The store stores data locally. It treats all data as raw nodes, that have *metadata* and *payload*.
-  // Metadata and payload are stored under separate keys.
+  // Where the actual data is stored is determined by the <StorageAdapter> that is being used.
 
 
   var logger = util.getLogger('store');
@@ -4068,7 +4074,7 @@ define('lib/store',[
   // the required interface.
   function setAdapter(adapter) {
     dataStore = adapter;
-    // forward changes from data store (e.g. made in other tabs)  
+    // forward changes from data store (e.g. made in other tabs)
     dataStore.on('change', function(event) {
       if(! util.isDir(event.path)) {
         fireChange('device', event.path, event.oldValue);
@@ -4079,11 +4085,11 @@ define('lib/store',[
   (function() {
     if(typeof(window) !== 'undefined') {
       var idb = indexedDbAdapter.detect();
-      if(idb && (! window.webkitIndexedDB)) {
+      if(idb) {
         setAdapter(indexedDbAdapter(idb));
-      } else if(typeof(window.openDatabase !== 'undefined')) {
+      } else if(typeof(window.openDatabase) !== 'undefined') {
         setAdapter(webSqlAdapter());
-      } else if(typeof(window.localStorage !== 'undefined')) {
+      } else if(typeof(window.localStorage) !== 'undefined') {
         setAdapter(localStorageAdapter(window.localStorage));
       } else {
         throw "Running in browser, but no storage adapter supported!";
