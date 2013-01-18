@@ -28,10 +28,8 @@
 
         remoteStorage.myfavoritedrinks.listDrinks().then(displayDrinks);
 
-        remoteStorage.onWidget('state', function(state) {
-          if(state === 'disconnected') {
+        remoteStorage.onWidget('disconnect') {
             emptyDrinks();
-          }
         });
 
         ulElement.addEventListener('click', function(event) {
@@ -42,7 +40,10 @@
 
         formElement.addEventListener('submit', function(event) {
           event.preventDefault();
-          addDrink(inputElement.value);
+          var trimmedText = inputElement.value.trim();
+          if(trimmedText) {
+            addDrink(trimmedText);
+          }
           inputElement.value = '';
         });
 
