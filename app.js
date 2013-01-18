@@ -28,7 +28,7 @@
 
         remoteStorage.myfavoritedrinks.listDrinks().then(displayDrinks);
 
-        remoteStorage.onWidget('disconnect') {
+        remoteStorage.onWidget('disconnect', function() {
             emptyDrinks();
         });
 
@@ -82,7 +82,8 @@
       liElement.id = domID;
       ulElement.appendChild(liElement);
     }
-    liElement.innerHTML = name + ' <span title="Delete">×</span>';
+    liElement.appendChild(document.createTextNode(name));//this will do some html escaping
+    liElement.innerHTML += ' <span title="Delete">×</span>';
   }
 
   function undisplayDrink(id) {
