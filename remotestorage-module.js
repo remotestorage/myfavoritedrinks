@@ -17,7 +17,7 @@
 				on: privateClient.on,
 				
 				addDrink: function(name) {
-					var id = name.toLowerCase().replace(/\s/g, '-');
+					var id = name.toLowerCase().replace(/\s|\//g, '-');
 					return privateClient.storeObject('drink', id, {
 						name: name
 					});
