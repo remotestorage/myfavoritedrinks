@@ -28,10 +28,8 @@
 
         remoteStorage.myfavoritedrinks.listDrinks().then(displayDrinks);
 
-        remoteStorage.onWidget('state', function(state) {
-          if(state === 'disconnected') {
+        remoteStorage.onWidget('disconnect', function() {
             emptyDrinks();
-          }
         });
 
         ulElement.addEventListener('click', function(event) {
@@ -42,7 +40,10 @@
 
         formElement.addEventListener('submit', function(event) {
           event.preventDefault();
-          addDrink(inputElement.value);
+          var trimmedText = inputElement.value.trim();
+          if(trimmedText) {
+            addDrink(trimmedText);
+          }
           inputElement.value = '';
         });
 
@@ -81,7 +82,8 @@
       liElement.id = domID;
       ulElement.appendChild(liElement);
     }
-    liElement.innerHTML = name + ' <span title="Delete">×</span>';
+    liElement.appendChild(document.createTextNode(name));//this will do some html escaping
+    liElement.innerHTML += ' <span title="Delete">×</span>';
   }
 
   function undisplayDrink(id) {
