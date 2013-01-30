@@ -4,7 +4,13 @@
   var ulElement;
   var drinkRowPrefix = 'drinkrow-';
 
-  remoteStorage.util.setLogLevel('debug');
+  var lookupDrinksElement;
+  var userFormElement;
+  var userInputElement;
+  var userUlElement;
+  var errorEl;
+
+  // remoteStorage.util.setLogLevel('debug');
 
   // remoteStorage.util.silenceAllLoggers();
 
@@ -22,6 +28,31 @@
     inputElement = formElement.getElementsByTagName('input')[0];
     ulElement = document.getElementById('drink-list');
 
+    userFormElement = document.getElementById('other-user');
+    userAddressElement = userFormElement.getElementsByTagName('input')[0];
+    userUlElement = document.getElementById('other-drink-list');
+
+    lookupDrinksElement = document.getElementById('lookup-drinks');
+
+    lookupDrinksElement.addEventListener('click', function() {
+      var box = lookupDrinksElement.parentElement;
+      if(box.getAttribute('class') === 'hidden') {
+        box.removeAttribute('class');
+      } else {
+        box.setAttribute('class', 'hidden');
+      }
+    });
+
+    userFormElement.addEventListener('submit', function(event) {
+      event.preventDefault();
+      var userAddress = userAddressElement.value;
+      if(userAddress) {
+        discoverOther(userAddress);
+      } else {
+        userUlElement.innerHTML = '';
+      }
+    });
+
     remoteStorage.claimAccess('myfavoritedrinks', 'rw').
       then(function() {
         remoteStorage.displayWidget('remotestorage-connect');
@@ -34,7 +65,20 @@
 
         ulElement.addEventListener('click', function(event) {
           if(event.target.tagName === 'SPAN') {
-            removeDrink(unprefixId(event.target.parentNode.id));
+            var drinkId = unprefixId(event.target.parentNode.id);
+            var className = event.target.getAttribute('class').
+              replace(/^\s+(.+)\s+$/, '$1');
+            switch(className) {
+            case 'share':
+              shareDrink(drinkId);
+              break;
+            case 'shared':
+              unshareDrink(drinkId);
+              break;
+            case 'delete':
+              removeDrink(drinkId);
+              break;
+            }
           }
         });
 
@@ -60,6 +104,61 @@
       });
   }
 
+  function shareDrink(drinkId) {
+    remoteStorage.myfavoritedrinks.shareDrink(drinkId).
+      then(function() {
+        var elem = document.getElementById(prefixId(drinkId));
+        var span = elem.getElementsByClassName('share')[0]
+        if(span) {
+          span.setAttribute('class', 'shared');
+          span.innerHTML = 'shared';
+        }
+      });
+  }
+
+  function unshareDrink(drinkId) {
+    remoteStorage.myfavoritedrinks.unshareDrink(drinkId).
+      then(function() {
+        var elem = document.getElementById(prefixId(drinkId));
+        var span = elem.getElementsByClassName('shared')[0]
+        if(span) {
+          span.setAttribute('class', 'share');
+          span.innerHTML = 'share';
+        }
+      });
+  }
+  
+  function displayOtherDrink(drink) {
+    var drinkLi = document.createElement('li');
+    drinkLi.innerHTML = drink.replace(/</, '&lt').replace(/>/, '&gt');
+    userUlElement.appendChild(drinkLi);
+    remoteStorage.myfavoritedrinks.isFavorite(drink).
+      then(function(value) {
+        if(value) {
+          drinkLi.setAttribute('class', 'own-favorite');
+          drinkLi.setAttribute('title', 'You like this as well!');
+        }
+      });
+  }
+
+  function displayOtherDrinks(drinks) {
+    console.log("DRINKS", drinks);
+    if(drinks && drinks.length > 0) {
+      userUlElement.innerHTML = '';
+      drinks.forEach(displayOtherDrink);
+    } else {
+      userUlElement.innerHTML = "<em>No drinks published.</em>";
+    }
+  }
+
+  function discoverOther(userAddress) {
+    remoteStorage.getForeignClient(userAddress).
+      then(function(client) {
+        return client.getObject('myfavoritedrinks/list');
+      }).
+      then(displayOtherDrinks);
+  }
+
   function addDrink(name) {
     remoteStorage.myfavoritedrinks.addDrink(name);
   }
@@ -70,11 +169,11 @@
 
   function displayDrinks(drinks) {
     for(var drinkId in drinks) {
-      displayDrink(drinkId, drinks[drinkId].name);
+      displayDrink(drinkId, drinks[drinkId].name, drinks[drinkId].shared);
     }    
   }
 
-  function displayDrink(id, name) {
+  function displayDrink(id, name, shared) {
     var domID = prefixId(id);
     var liElement = document.getElementById(domID);
     if(! liElement) {
@@ -83,7 +182,9 @@
       ulElement.appendChild(liElement);
     }
     liElement.appendChild(document.createTextNode(name));//this will do some html escaping
-    liElement.innerHTML += ' <span title="Delete">×</span>';
+    var shareState = (shared ? 'shared' : 'share');
+    liElement.innerHTML += ' <span class=" ' + shareState + ' ">' + shareState  + '</span>';
+    liElement.innerHTML += ' <span class="delete" title="Delete">×</span>';
   }
 
   function undisplayDrink(id) {
