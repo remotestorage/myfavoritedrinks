@@ -94,7 +94,7 @@
         remoteStorage.myfavoritedrinks.on('change', function(event) {
           // add
           if(event.newValue && (! event.oldValue)) {
-            displayDrink(event.relativePath, event.newValue.name);
+            displayDrink(event.relativePath, event.newValue.name, event.newValue.shared);
           }
           // remove
           else if((! event.newValue) && event.oldValue) {
@@ -142,7 +142,6 @@
   }
 
   function displayOtherDrinks(drinks) {
-    console.log("DRINKS", drinks);
     if(drinks && drinks.length > 0) {
       userUlElement.innerHTML = '';
       drinks.forEach(displayOtherDrink);
@@ -168,12 +167,15 @@
   }
 
   function displayDrinks(drinks) {
+    var drink;
     for(var drinkId in drinks) {
-      displayDrink(drinkId, drinks[drinkId].name, drinks[drinkId].shared);
+      drink = drinks[drinkId];
+      displayDrink(drinkId, drink.name, drink.shared);
     }    
   }
 
   function displayDrink(id, name, shared) {
+    console.log("DISPLAY", id, name, shared);
     var domID = prefixId(id);
     var liElement = document.getElementById(domID);
     if(! liElement) {
