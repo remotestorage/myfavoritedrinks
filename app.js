@@ -6,7 +6,7 @@
 
   var lookupDrinksElement;
   var userFormElement;
-  var userInputElement;
+  var userAddressElement;
   var userUlElement;
   var errorEl;
 
@@ -102,6 +102,14 @@
           }
         });
       });
+
+    var hashMatch = document.location.hash.match(/#!(.+@.+)$/)
+    if(hashMatch) {
+      var userAddress = hashMatch[1];
+      userAddressElement.value = userAddress;
+      lookupDrinksElement.parentElement.removeAttribute('class');
+      discoverOther(userAddress);
+    }
   }
 
   function shareDrink(drinkId) {
