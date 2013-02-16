@@ -32,7 +32,7 @@ remoteStorage.defineModule('myfavoritedrinks', function(privateClient, publicCli
           then(function(drink) {
             if(drink) {
               if(drink.shared === value) {
-                throw "Drink already shared: " + id + ' -> ' + String(drink.shared);
+                throw 'Drink already shared: ' + id + ' -> ' + drink.shared;
               } else {
                 return publicClient.getObject('list').
                   then(function(shared) {
@@ -58,7 +58,7 @@ remoteStorage.defineModule('myfavoritedrinks', function(privateClient, publicCli
                   });
               }
             } else {
-              throw "No such drink: " + id;
+              throw 'No such drink: ' + id;
             }
           }.bind(this));
       },

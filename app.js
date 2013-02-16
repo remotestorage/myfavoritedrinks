@@ -8,7 +8,6 @@
   var userFormElement;
   var userAddressElement;
   var userUlElement;
-  var errorEl;
 
   // remoteStorage.util.setLogLevel('debug');
 
@@ -116,7 +115,7 @@
     remoteStorage.myfavoritedrinks.shareDrink(drinkId).
       then(function() {
         var elem = document.getElementById(prefixId(drinkId));
-        var span = elem.getElementsByClassName('share')[0]
+        var span = elem.getElementsByClassName('share')[0];
         if(span) {
           span.setAttribute('class', 'shared');
           span.innerHTML = 'shared';
@@ -128,14 +127,14 @@
     remoteStorage.myfavoritedrinks.unshareDrink(drinkId).
       then(function() {
         var elem = document.getElementById(prefixId(drinkId));
-        var span = elem.getElementsByClassName('shared')[0]
+        var span = elem.getElementsByClassName('shared')[0];
         if(span) {
           span.setAttribute('class', 'share');
           span.innerHTML = 'share';
         }
       });
   }
-  
+
   function displayOtherDrink(drink) {
     var drinkLi = document.createElement('li');
     drinkLi.innerHTML = drink.replace(/</, '&lt').replace(/>/, '&gt');
@@ -154,7 +153,7 @@
       userUlElement.innerHTML = '';
       drinks.forEach(displayOtherDrink);
     } else {
-      userUlElement.innerHTML = "<em>No drinks published.</em>";
+      userUlElement.innerHTML = '<em>No drinks published.</em>';
     }
   }
 
@@ -179,11 +178,10 @@
     for(var drinkId in drinks) {
       drink = drinks[drinkId];
       displayDrink(drinkId, drink.name, drink.shared);
-    }    
+    }
   }
 
   function displayDrink(id, name, shared) {
-    console.log("DISPLAY", id, name, shared);
     var domID = prefixId(id);
     var liElement = document.getElementById(domID);
     if(! liElement) {
