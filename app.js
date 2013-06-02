@@ -1,4 +1,5 @@
 (function() {
+  var drinks;
   var inputElement;
   var formElement;
   var ulElement;
@@ -26,11 +27,15 @@
       then(function() {
         remoteStorage.displayWidget('remotestorage-connect');
 
-        remoteStorage.myfavoritedrinks.listDrinks().then(displayDrinks);
+        remoteStorage.myfavoritedrinks.init();
 
-        remoteStorage.onWidget('disconnect', function() {
+        drinks = remoteStorage.myfavoritedrinks.getPrivateListing('');
+
+        drinks.listDrinks().then(displayDrinks);
+
+        /*drinks.on('disconnect', function() {
             emptyDrinks();
-        });
+        });*/
 
         ulElement.addEventListener('click', function(event) {
           if(event.target.tagName === 'SPAN') {
@@ -47,7 +52,7 @@
           inputElement.value = '';
         });
 
-        remoteStorage.myfavoritedrinks.on('change', function(event) {
+        drinks.on('change', function(event) {
           // add
           if(event.newValue && (! event.oldValue)) {
             displayDrink(event.relativePath, event.newValue.name);
@@ -61,17 +66,17 @@
   }
 
   function addDrink(name) {
-    remoteStorage.myfavoritedrinks.addDrink(name);
+    drinks.addDrink(name);
   }
 
   function removeDrink(id) {
-    remoteStorage.myfavoritedrinks.removeDrink(id);
+    drinks.removeDrink(id);
   }
 
   function displayDrinks(drinks) {
     for(var drinkId in drinks) {
       displayDrink(drinkId, drinks[drinkId].name);
-    }    
+    }
   }
 
   function displayDrink(id, name) {
