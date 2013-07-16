@@ -4,7 +4,7 @@
   var ulElement;
   var drinkRowPrefix = 'drinkrow-';
 
-  remoteStorage.util.setLogLevel('debug');
+  //remoteStorage.util.setLogLevel('debug');
 
   // remoteStorage.util.silenceAllLoggers();
 
@@ -22,42 +22,42 @@
     inputElement = formElement.getElementsByTagName('input')[0];
     ulElement = document.getElementById('drink-list');
 
-    remoteStorage.claimAccess('myfavoritedrinks', 'rw').
-      then(function() {
-        remoteStorage.displayWidget('remotestorage-connect');
+    remoteStorage.claimAccess('myfavoritedrinks', 'rw');
+    remoteStorage.displayWidget();
+    remoteStorage.on('features-loaded', function(){  
 
-        remoteStorage.myfavoritedrinks.listDrinks().then(displayDrinks);
-
-        remoteStorage.onWidget('disconnect', function() {
-            emptyDrinks();
-        });
-
-        ulElement.addEventListener('click', function(event) {
-          if(event.target.tagName === 'SPAN') {
-            removeDrink(unprefixId(event.target.parentNode.id));
-          }
-        });
-
-        formElement.addEventListener('submit', function(event) {
-          event.preventDefault();
-          var trimmedText = inputElement.value.trim();
-          if(trimmedText) {
-            addDrink(trimmedText);
-          }
-          inputElement.value = '';
-        });
-
-        remoteStorage.myfavoritedrinks.on('change', function(event) {
-          // add
-          if(event.newValue && (! event.oldValue)) {
-            displayDrink(event.relativePath, event.newValue.name);
-          }
-          // remove
-          else if((! event.newValue) && event.oldValue) {
-            undisplayDrink(event.relativePath);
-          }
-        });
+      //remoteStorage.myfavoritedrinks.listDrinks().then(displayDrinks);
+      
+      remoteStorage.on('disconnect', function() {
+        emptyDrinks();
       });
+
+      ulElement.addEventListener('click', function(event) {
+        if(event.target.tagName === 'SPAN') {
+          removeDrink(unprefixId(event.target.parentNode.id));
+        }
+      });
+      
+      formElement.addEventListener('submit', function(event) {
+        event.preventDefault();
+        var trimmedText = inputElement.value.trim();
+        if(trimmedText) {
+          addDrink(trimmedText);
+        }
+        inputElement.value = '';
+      });
+      
+      remoteStorage.myfavoritedrinks.on('change', function(event) {
+        // add
+        if(event.newValue && (! event.oldValue)) {
+          displayDrink(event.relativePath, event.newValue.name);
+        }
+        // remove
+        else if((! event.newValue) && event.oldValue) {
+          undisplayDrink(event.relativePath);
+        }
+      });
+    });
   }
 
   function addDrink(name) {
@@ -65,6 +65,7 @@
   }
 
   function removeDrink(id) {
+    console.log(id,typeof(id),JSON.stringify(id));
     remoteStorage.myfavoritedrinks.removeDrink(id);
   }
 
