@@ -65,7 +65,6 @@
   }
 
   function removeDrink(id) {
-    console.log(id,typeof(id),JSON.stringify(id));
     remoteStorage.myfavoritedrinks.removeDrink(id);
   }
 

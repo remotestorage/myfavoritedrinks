@@ -22,9 +22,10 @@ RemoteStorage.defineModule('myfavoritedrinks', function(privateClient) {
 	});
       },
 
-      removeDrink: function(id){
-        return privateClient.remove(id)
-      },
+      removeDrink: /*function(id){
+        return */privateClient.remove.bind(privateClient)
+      //}
+      ,
       
       listDrinks: function() {
 	return privateClient.getAll('');
