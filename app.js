@@ -24,6 +24,17 @@
 
     remoteStorage.claimAccess('myfavoritedrinks', 'rw');
     remoteStorage.displayWidget();
+    remoteStorage.myfavoritedrinks.on('change', function(event) {
+      // add
+      if(event.newValue && (! event.oldValue)) {
+        displayDrink(event.relativePath, event.newValue.name);
+      }
+      // remove
+      else if((! event.newValue) && event.oldValue) {
+        undisplayDrink(event.relativePath);
+      }
+    });
+
     remoteStorage.on('features-loaded', function(){  
 
       //remoteStorage.myfavoritedrinks.listDrinks().then(displayDrinks);
@@ -47,16 +58,6 @@
         inputElement.value = '';
       });
       
-      remoteStorage.myfavoritedrinks.on('change', function(event) {
-        // add
-        if(event.newValue && (! event.oldValue)) {
-          displayDrink(event.relativePath, event.newValue.name);
-        }
-        // remove
-        else if((! event.newValue) && event.oldValue) {
-          undisplayDrink(event.relativePath);
-        }
-      });
     });
   }
 
