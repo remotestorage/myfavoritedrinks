@@ -22,7 +22,7 @@
     inputElement = formElement.getElementsByTagName('input')[0];
     ulElement = document.getElementById('drink-list');
 
-    remoteStorage.claimAccess('myfavoritedrinks', 'rw');
+    remoteStorage.access.claim('myfavoritedrinks', 'rw');
     remoteStorage.displayWidget();
     remoteStorage.myfavoritedrinks.on('change', function(event) {
       // add
