@@ -537,7 +537,8 @@
    * Method: claimAccess
    *
    * High-level method to claim access on one or multiple scopes and enable
-   * caching for them.
+   * caching for them. WARNING: when using Caching control, use remoteStorage.access.claim instead,
+   * see https://github.com/remotestorage/remotestorage.js/issues/380
    *
    * Examples:
    *   (start code)
@@ -772,13 +773,18 @@
       if(timedOut) return;
       clearTimeout(timer);
       var mimeType = xhr.getResponseHeader('Content-Type');
-      var body = mimeType && mimeType.match(/^application\/json/) ? JSON.parse(xhr.responseText) : xhr.responseText;
+      var body;
       var revision = getEtag ? xhr.getResponseHeader('ETag') : (xhr.status == 200 ? fakeRevision : undefined);
       if(mimeType.match(/charset=binary/)) {
-        var bl = body.length, ab = new ArrayBuffer(bl), abv = new Uint8Array(ab);
-        for(var i=0;i<bl;i++) abv[i] = body.charCodeAt(i);
-        promise.fulfill(xhr.status, ab, mimeType, revision);
+        var blob = new Blob([xhr.response], {type: mimeType});
+        var reader = new FileReader();
+        reader.addEventListener("loadend", function() {
+          // reader.result contains the contents of blob as a typed array
+          promise.fulfill(xhr.status, reader.result, mimeType, revision);
+        });
+        reader.readAsArrayBuffer(blob);
       } else {
+        body = mimeType && mimeType.match(/^application\/json/) ? JSON.parse(xhr.responseText) : xhr.responseText;
         promise.fulfill(xhr.status, body, mimeType, revision);
       }
     };
@@ -825,6 +831,43 @@
   RS.WireClient.REQUEST_TIMEOUT = 30000;
 
   RS.WireClient.prototype = {
+
+    /**
+     * Property: token
+     *
+     * Holds the bearer token of this WireClient, as obtained in the OAuth dance
+     *
+     * Example:
+     *   (start code)
+     *
+     *   remoteStorage.remote.token
+     *   // -> 'DEADBEEF01=='
+     */
+
+    /**
+     * Property: href
+     *
+     * Holds the server's base URL, as obtained in the Webfinger discovery
+     *
+     * Example:
+     *   (start code)
+     *
+     *   remoteStorage.remote.href
+     *   // -> 'https://storage.example.com/users/jblogg/'
+     */
+
+    /**
+     * Property: storageApi
+     *
+     * Holds the spec version the server claims to be compatible with
+     *
+     * Example:
+     *   (start code)
+     *
+     *   remoteStorage.remote.storageApi
+     *   // -> 'draft-dejong-remotestorage-01'
+     */
+
 
     configure: function(userAddress, href, storageApi, token) {
       if(typeof(userAddress) !== 'undefined') this.userAddress = userAddress;
@@ -1049,6 +1092,9 @@
 
   function extractParams() {
     //FF already decodes the URL fragment in document.location.hash, so use this instead:
+    if(! document.location.href) {//bit ugly way to fix unit tests
+      document.location.href = document.location.hash;
+    }
     var hashPos = document.location.href.indexOf('#');
     if(hashPos == -1) return;
     var hash = document.location.href.substring(hashPos+1);
@@ -1258,6 +1304,7 @@
 
   // documented in src/remotestorage.js
   RemoteStorage.prototype.claimAccess = function(scopes) {
+    console.log("DEPRECATION WARNING: remoteStorage.claimAccess may mess with your caching control - if you use cache control directives, then see https://github.com/remotestorage/remotestorage.js/issues/380 and use remoteStorage.access.claim instead.");
     if(typeof(scopes) === 'object') {
       for(var key in scopes) {
         this.access.claim(key, scopes[key]);
@@ -1648,7 +1695,7 @@ RemoteStorage.Assets = {
           this.show_bubble();
           setTimeout(function(){
             cube.src = RemoteStorage.Assets.remoteStorageIcon;
-          },3512)
+          },5000)//show the red error cube for 5 seconds, then show the normal orange one again
         } else {
           this.hide_bubble();
         }
@@ -3578,25 +3625,29 @@ Math.uuid = function (len, radix) {
       rs._emit('sync-busy');
       var path;
       while((path = roots.shift())) {
-        RemoteStorage.Sync.sync(rs.remote, rs.local, path, rs.caching.get(path)).
-          then(function() {
-            if(aborted) return;
-            i++;
-            if(n == i) {
+        (function (path) {
+          //console.log('syncing '+path);
+          RemoteStorage.Sync.sync(rs.remote, rs.local, path, rs.caching.get(path)).
+            then(function() {
+              //console.log('syncing '+path+' success');
+              if(aborted) return;
+              i++;
+              if(n == i) {
+                rs._emit('sync-done');
+                promise.fulfill();
+              }
+            }, function(error) {
+              console.error('syncing', path, 'failed:', error);
+              aborted = true;
               rs._emit('sync-done');
-              promise.fulfill();
-            }
-          }, function(error) {
-            console.error('syncing', path, 'failed:', error);
-            aborted = true;
-            rs._emit('sync-done');
-            if(error instanceof RemoteStorage.Unauthorized) {
-              rs._emit('error', error);
-            } else {
-              rs._emit('error', new SyncError(error));
-            }
-            promise.reject(error);
-          });
+              if(error instanceof RemoteStorage.Unauthorized) {
+                rs._emit('error', error);
+              } else {
+                rs._emit('error', new SyncError(error));
+              }
+              promise.reject(error);
+            });
+        })(path);
       }
     });
   };
@@ -3606,6 +3657,10 @@ Math.uuid = function (len, radix) {
   RemoteStorage.prototype.syncCycle = function() {
     this.sync().then(function() {
       this.stopSync();
+      this._syncTimer = setTimeout(this.syncCycle.bind(this), SYNC_INTERVAL);
+    }.bind(this),
+    function() {
+      console.log('sync error, retrying');
       this._syncTimer = setTimeout(this.syncCycle.bind(this), SYNC_INTERVAL);
     }.bind(this));
   };
