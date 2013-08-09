@@ -24,6 +24,7 @@
 
     remoteStorage.access.claim('myfavoritedrinks', 'rw');
     remoteStorage.displayWidget();
+    remoteStorage.myfavoritedrinks.init();
     remoteStorage.myfavoritedrinks.on('change', function(event) {
       // add
       if(event.newValue && (! event.oldValue)) {

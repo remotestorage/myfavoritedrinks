@@ -12,6 +12,10 @@ RemoteStorage.defineModule('myfavoritedrinks', function(privateClient) {
 
   return {
     exports: {
+
+      init: function() {
+        privateClient.cache('', true);
+      },
       
       on: privateClient.on,
 
