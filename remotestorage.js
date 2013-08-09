@@ -772,10 +772,11 @@
     xhr.onload = function() {
       if(timedOut) return;
       clearTimeout(timer);
+      if(xhr.status == 404) return promise.fulfill(xhr.status);
       var mimeType = xhr.getResponseHeader('Content-Type');
       var body;
       var revision = getEtag ? xhr.getResponseHeader('ETag') : (xhr.status == 200 ? fakeRevision : undefined);
-      if(mimeType.match(/charset=binary/)) {
+      if((! mimeType) || mimeType.match(/charset=binary/)) {
         var blob = new Blob([xhr.response], {type: mimeType});
         var reader = new FileReader();
         reader.addEventListener("loadend", function() {
@@ -793,8 +794,13 @@
       clearTimeout(timer);
       promise.reject(error);
     };
-    if(typeof(body) === 'object' && !(body instanceof ArrayBuffer)) {
-      body = JSON.stringify(body);
+    if(typeof(body) === 'object') {
+      if(body instanceof ArrayBufferView) { /* alright. */ }
+      else if(body instanceof ArrayBuffer) {
+        body = new Uint8Array(body);
+      } else {
+        body = JSON.stringify(body);
+      }
     }
     xhr.send(body);
     return promise;
@@ -933,7 +939,7 @@
       if(! this.connected) throw new Error("not connected (path: " + path + ")");
       if(!options) options = {};
       if(! contentType.match(/charset=/)) {
-        contentType += '; charset=' + (body instanceof ArrayBuffer ? 'binary' : 'utf-8');
+        contentType += '; charset=' + ((body instanceof ArrayBuffer || body instanceof ArrayBufferView) ? 'binary' : 'utf-8');
       }
       var headers = { 'Content-Type': contentType };
       if(this.supportsRevs) {
@@ -2864,7 +2870,7 @@ Math.uuid = function (len, radix) {
      * Parameters:
      *   mimeType - MIME media type of the data being stored
      *   path     - path relative to the module root. MAY NOT end in a forward slash.
-     *   data     - string or ArrayBuffer of raw data to store
+     *   data     - string, ArrayBuffer or ArrayBufferView of raw data to store
      *
      * The given mimeType will later be returned, when retrieving the data
      * using <getFile>.
@@ -3883,7 +3889,7 @@ Math.uuid = function (len, radix) {
           newValue: body
         });
         if(! incoming) {
-          this._recordChange(path, { action: 'PUT' });
+          this._recordChange(path, { action: 'PUT', revision: oldNode ? oldNode.revision : undefined });
         }
         if(typeof(done) === 'undefined') {
           done = true;
@@ -3916,7 +3922,7 @@ Math.uuid = function (len, radix) {
           });
         }
         if(! incoming) {
-          this._recordChange(path, { action: 'DELETE' });
+          this._recordChange(path, { action: 'DELETE', revision: oldNode ? oldNode.revision : undefined });
         }
         promise.fulfill(200);
       }.bind(this);
@@ -4102,10 +4108,13 @@ Math.uuid = function (len, radix) {
       callback(dbOpen.error);
     };
     dbOpen.onupgradeneeded = function(event) {
+      RemoteStorage.log("[IndexedDB] Upgrade: from ", event.oldVersion, " to ", event.newVersion);
       var db = dbOpen.result;
       if(event.oldVersion != 1) {
+        RemoteStorage.log("[IndexedDB] Creating object store: nodes");
         db.createObjectStore('nodes', { keyPath: 'path' });
       }
+      RemoteStorage.log("[IndexedDB] Creating object store: changes");
       db.createObjectStore('changes', { keyPath: 'path' });
     }
     dbOpen.onsuccess = function() {
@@ -4139,6 +4148,7 @@ Math.uuid = function (len, radix) {
         }
       } else {
         DEFAULT_DB = db;
+        db.onerror = function() { remoteStorage._emit('error', err); };
         promise.fulfill();
       }
     });
