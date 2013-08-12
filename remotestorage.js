@@ -3497,15 +3497,41 @@ Math.uuid = function (len, radix) {
     for(var bk in b) keyObject[bk] = true;
     return Object.keys(keyObject);
   }
-
+  function promiseDeleteLocal(local, path) {
+    var promise = promising();
+    deleteLocal(local, path, promise);
+    return promise;
+  }
   function deleteLocal(local, path, promise) {
     if(isDir(path)) {
-      promise.fulfill();
+      local.get(path).then(function(localStatus, localBody, localContentType, localRevision) {
+        var keys = [], failed = false;
+        for(item in localBody) {
+          keys.push(item);
+        }
+        //console.log('deleting keys', keys, 'from', path, localBody);
+        var n = keys.length, i = 0;
+        if(n == 0) promise.fulfill();
+        function oneDone() {
+          i++;
+          if(i == n && !failed) promise.fulfill();
+        }
+        function oneFailed(error) {
+          if(!failed) {
+            failed = true;
+            promise.reject(error);
+          }
+        }
+        keys.forEach(function(key) {
+          promiseDeleteLocal(local, path + key).then(oneDone, oneFailed);
+        });
+      });
     } else {
-      local.delete(path, true).then(promise.fulfill);
+      //console.log('deleting local item', path);
+      local.delete(path, true).then(promise.fulfill, promise.reject);
     }
   }
-
+ 
   function synchronize(remote, local, path, options) {
     var promise = promising();
     local.get(path).then(function(localStatus, localBody, localContentType, localRevision) {
