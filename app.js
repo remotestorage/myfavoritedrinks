@@ -4,12 +4,6 @@
   var ulElement;
   var drinkRowPrefix = 'drinkrow-';
 
-  //remoteStorage.util.setLogLevel('debug');
-
-  // remoteStorage.util.silenceAllLoggers();
-
-  // remoteStorage.util.unsilenceLogger('sync', 'store');
-
   function prefixId(id) {
     return drinkRowPrefix + id;
   }
@@ -36,11 +30,9 @@
       }
     });
 
-    remoteStorage.on('features-loaded', function(){  
+    remoteStorage.on('ready', function() {
 
-      //remoteStorage.myfavoritedrinks.listDrinks().then(displayDrinks);
-      
-      remoteStorage.on('disconnect', function() {
+      remoteStorage.on('disconnected', function() {
         emptyDrinks();
       });
 
@@ -49,7 +41,7 @@
           removeDrink(unprefixId(event.target.parentNode.id));
         }
       });
-      
+
       formElement.addEventListener('submit', function(event) {
         event.preventDefault();
         var trimmedText = inputElement.value.trim();
@@ -58,7 +50,7 @@
         }
         inputElement.value = '';
       });
-      
+
     });
   }
 
@@ -73,7 +65,7 @@
   function displayDrinks(drinks) {
     for(var drinkId in drinks) {
       displayDrink(drinkId, drinks[drinkId].name);
-    }    
+    }
   }
 
   function displayDrink(id, name) {
