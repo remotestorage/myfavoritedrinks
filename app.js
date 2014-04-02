@@ -20,6 +20,8 @@
     remoteStorage.displayWidget();
     remoteStorage.myfavoritedrinks.init();
     remoteStorage.myfavoritedrinks.on('change', function(event) {
+      console.log('change event', event);
+
       // add
       if(event.newValue && (! event.oldValue)) {
         displayDrink(event.relativePath, event.newValue.name);
