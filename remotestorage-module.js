@@ -1,4 +1,11 @@
 RemoteStorage.defineModule('myfavoritedrinks', function(privateClient) {
+  privateClient.declareType('drink', {
+    type: 'object',
+    properties: {
+      name: { type: 'string' }
+    },
+    required: ['name']
+  });
 
   return {
     exports: {
