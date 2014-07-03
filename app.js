@@ -16,10 +16,12 @@
     inputElement = formElement.getElementsByTagName('input')[0];
     ulElement = document.getElementById('drink-list');
 
+    RemoteStorage.config.changeEvents.window = true;
     remoteStorage.access.claim('myfavoritedrinks', 'rw');
     remoteStorage.displayWidget();
     remoteStorage.myfavoritedrinks.init();
     remoteStorage.myfavoritedrinks.on('change', function(event) {
+      console.log('change from '+event.origin, event);
       // add
       if(event.newValue && (! event.oldValue)) {
         displayDrink(event.relativePath, event.newValue.name);
