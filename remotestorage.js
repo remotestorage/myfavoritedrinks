@@ -1,4 +1,4 @@
-/** remotestorage.js 0.10.3-pre, http://remotestorage.io, MIT-licensed **/
+/** remotestorage.js 0.11.0, http://remotestorage.io, MIT-licensed **/
 
 /** FILE: lib/bluebird.js **/
 /**
@@ -3274,28 +3274,18 @@ module.exports = ret;
 /** FILE: lib/bluebird-defer.js **/
 // wrapper to implement defer() functionality
 (function () {
-  function __defer() {
+  Promise.defer = function () {
     var resolve, reject;
     var promise = new Promise(function() {
         resolve = arguments[0];
         reject = arguments[1];
     });
     return {
-      resolve: resolve,
-      reject: reject,
-      promise: promise
+        resolve: resolve,
+        reject: reject,
+        promise: promise
     };
-  }
-
-  if (typeof global !== 'undefined') {
-    global.Promise.defer = __defer;
-  } else if (typeof Promise !== 'undefined') {
-    Promise.defer = __defer;
-  } else {
-    console.log('global: ', typeof global);
-    console.log('Promise: ', typeof Promise);
-    throw new Error("Unable to attach defer method to Promise object.");
-  }
+  };
 }());
 
 /** FILE: src/remotestorage.js **/
@@ -3388,8 +3378,13 @@ module.exports = ret;
    * Depending on which features are built in, it contains different attributes and
    * functions. See the individual features for more information.
    *
+   *  (start code)
+   *  var remoteStorage = new RemoteStorage({
+   *    logging: true  // defaults to false
+   *  });
+   *  (end code)
    */
-  var RemoteStorage = function () {
+  var RemoteStorage = function (cfg) {
     /**
      * Event: ready
      *
@@ -3443,6 +3438,12 @@ module.exports = ret;
      *
      * Fired when a wire request completes
      **/
+
+    // Initial configuration property settings.
+    if (typeof cfg === 'object') {
+      RemoteStorage.config.logging = !!cfg.logging;
+    }
+
     RemoteStorage.eventHandling(
       this, 'ready', 'connected', 'disconnected', 'not-connected', 'conflict',
             'error', 'features-loaded', 'connecting', 'authing', 'wire-busy',
@@ -3513,6 +3514,9 @@ module.exports = ret;
    * Log using console.log, when remoteStorage logging is enabled.
    *
    * You can enable logging with <enableLog>.
+   *
+   * (In node.js you can also enable logging during remoteStorage object
+   * creation. See: <RemoteStorage>).
    */
   RemoteStorage.log = function () {
     if (RemoteStorage.config.logging) {
@@ -3546,6 +3550,36 @@ module.exports = ret;
      // (see src/widget.js for implementation)
 
     /**
+     * Property: remote
+     *
+     * Properties:
+     *
+     *   connected   - Boolean, whether or not a remote store is connected
+     *   online      - Boolean, whether last sync action was successful or not
+     *   userAddress - String, the user address of the connected user
+     *   properties  - String, the properties of the WebFinger link
+     */
+
+    /**
+     * Method: scope
+     *
+     * Returns a BaseClient with a certain scope (base path). Please use this method
+     * only for debugging, and always use defineModule instead, to get access to a
+     * BaseClient from a module in an app.
+     *
+     * Parameters:
+     *
+     *   scope - A string, with a leading and a trailing slash, specifying the
+     *           base path of the BaseClient that will be returned.
+     *
+     * Code example:
+     *
+     * (start code)
+     * remoteStorage.scope('/pictures/').getListing('');
+     * remoteStorage.scope('/public/pictures/').getListing('');
+     */
+
+    /**
      * Method: connect
      *
      * Connect to a remoteStorage server.
@@ -3553,8 +3587,8 @@ module.exports = ret;
      * Parameters:
      *   userAddress - The user address (user@host) to connect to.
      *
-     * Discovers the webfinger profile of the given user address and
-     * initiates the OAuth dance.
+     * Discovers the webfinger profile of the given user address and initiates
+     * the OAuth dance.
      *
      * This method must be called *after* all required access has been claimed.
      *
@@ -3565,24 +3599,25 @@ module.exports = ret;
         this._emit('error', new RemoteStorage.DiscoveryError("User address doesn't contain an @."));
         return;
       }
-      this.remote.configure(userAddress);
+      this.remote.configure({
+        userAddress: userAddress
+      });
       this._emit('connecting');
 
       var discoveryTimeout = setTimeout(function () {
         this._emit('error', new RemoteStorage.DiscoveryError("No storage information found at that user address."));
       }.bind(this), RemoteStorage.config.discoveryTimeout);
 
-      RemoteStorage.Discover(userAddress, function (href, storageApi, authURL) {
+      RemoteStorage.Discover(userAddress).then(function (info) {
+        // Info contains fields: href, storageApi, authURL (optional), properties
+
         clearTimeout(discoveryTimeout);
-        if (!href) {
-          this._emit('error', new RemoteStorage.DiscoveryError("Failed to contact storage server."));
-          return;
-        }
         this._emit('authing');
-        this.remote.configure(userAddress, href, storageApi);
+        info.userAddress = userAddress;
+        this.remote.configure(info);
         if (! this.remote.connected) {
-          if (authURL) {
-            this.authorize(authURL);
+          if (info.authURL) {
+            this.authorize(info.authURL);
           } else {
             // In lieu of an excplicit authURL, assume that the browser
             // and server handle any authorization needs; for instance,
@@ -3592,6 +3627,8 @@ module.exports = ret;
             this.impliedauth();
           }
         }
+      }.bind(this), function(err) {
+        this._emit('error', new RemoteStorage.DiscoveryError("Failed to contact storage server."));
       }.bind(this));
     },
 
@@ -3604,7 +3641,13 @@ module.exports = ret;
      */
     disconnect: function () {
       if (this.remote) {
-        this.remote.configure(null, null, null, null);
+        this.remote.configure({
+          userAddress: null,
+          href: null,
+          storageApi: null,
+          token: null,
+          properties: null
+        });
       }
       this._setGPD({
         get: this._pendingGPD('get'),
@@ -3672,7 +3715,7 @@ module.exports = ret;
     /**
      * Method: enableLog
      *
-     * Enable remoteStorage logging
+     * Enable remoteStorage logging.
      */
     enableLog: function () {
       RemoteStorage.config.logging = true;
@@ -3704,8 +3747,8 @@ module.exports = ret;
      * both these backends is still experimental.
      *
      * Parameters:
-     * type - string, either 'googledrive' or 'dropbox'
-     * keys - object, with one string field; 'client_id' for GoogleDrive, or
+     *   type - string, either 'googledrive' or 'dropbox'
+     *   keys - object, with one string field; 'client_id' for GoogleDrive, or
      *          'api_key' for Dropbox.
      *
      */
@@ -3765,6 +3808,10 @@ module.exports = ret;
           if (this.remote.connected) {
             fireReady();
             self._emit('connected');
+          }
+
+          if (!this.hasFeature('Authorize')) {
+            this.remote.stopWaitingForToken();
           }
         }
 
@@ -3896,8 +3943,7 @@ module.exports = ret;
                 featureSupported(featureName, false);
               }
             );
-          }
-          else if (typeof supported === 'boolean') {
+          } else if (typeof supported === 'boolean') {
             featureSupported(featureName, supported);
             if (supported) {
               initFeature(featureName);
@@ -3907,6 +3953,32 @@ module.exports = ret;
           featureSupported(featureName, false);
         }
       });
+    },
+
+    /**
+     * Method: hasFeature
+     *
+     * Checks whether a feature is enabled or not within remoteStorage.
+     * Returns a boolean.
+     *
+     * Parameters:
+     *   name - Capitalized name of the feature. e.g. Authorize, or IndexedDB
+     *
+     * Example:
+     *   (start code)
+     *   if (remoteStorage.hasFeature('LocalStorage')) {
+     *     console.log('LocalStorage is enabled!');
+     *   }
+     *   (end code)
+     *
+     */
+    hasFeature: function (feature) {
+      for (var i = this.features.length - 1; i >= 0; i--) {
+        if (this.features[i].name === feature) {
+          return this.features[i].supported;
+        }
+      }
+      return false;
     },
 
     localStorageAvailable: function () {
@@ -4259,8 +4331,174 @@ module.exports = ret;
         paths.push(parts.join('/')+'/');
       }
       return paths;
-    }
+    },
 
+    md5sum: function(str) {
+      //
+      // http://www.myersdaily.org/joseph/javascript/md5.js
+      //
+      function md5cycle(x, k) {
+        var a = x[0], b = x[1], c = x[2], d = x[3];
+
+        a = ff(a, b, c, d, k[0], 7, -680876936);
+        d = ff(d, a, b, c, k[1], 12, -389564586);
+        c = ff(c, d, a, b, k[2], 17,  606105819);
+        b = ff(b, c, d, a, k[3], 22, -1044525330);
+        a = ff(a, b, c, d, k[4], 7, -176418897);
+        d = ff(d, a, b, c, k[5], 12,  1200080426);
+        c = ff(c, d, a, b, k[6], 17, -1473231341);
+        b = ff(b, c, d, a, k[7], 22, -45705983);
+        a = ff(a, b, c, d, k[8], 7,  1770035416);
+        d = ff(d, a, b, c, k[9], 12, -1958414417);
+        c = ff(c, d, a, b, k[10], 17, -42063);
+        b = ff(b, c, d, a, k[11], 22, -1990404162);
+        a = ff(a, b, c, d, k[12], 7,  1804603682);
+        d = ff(d, a, b, c, k[13], 12, -40341101);
+        c = ff(c, d, a, b, k[14], 17, -1502002290);
+        b = ff(b, c, d, a, k[15], 22,  1236535329);
+
+        a = gg(a, b, c, d, k[1], 5, -165796510);
+        d = gg(d, a, b, c, k[6], 9, -1069501632);
+        c = gg(c, d, a, b, k[11], 14,  643717713);
+        b = gg(b, c, d, a, k[0], 20, -373897302);
+        a = gg(a, b, c, d, k[5], 5, -701558691);
+        d = gg(d, a, b, c, k[10], 9,  38016083);
+        c = gg(c, d, a, b, k[15], 14, -660478335);
+        b = gg(b, c, d, a, k[4], 20, -405537848);
+        a = gg(a, b, c, d, k[9], 5,  568446438);
+        d = gg(d, a, b, c, k[14], 9, -1019803690);
+        c = gg(c, d, a, b, k[3], 14, -187363961);
+        b = gg(b, c, d, a, k[8], 20,  1163531501);
+        a = gg(a, b, c, d, k[13], 5, -1444681467);
+        d = gg(d, a, b, c, k[2], 9, -51403784);
+        c = gg(c, d, a, b, k[7], 14,  1735328473);
+        b = gg(b, c, d, a, k[12], 20, -1926607734);
+
+        a = hh(a, b, c, d, k[5], 4, -378558);
+        d = hh(d, a, b, c, k[8], 11, -2022574463);
+        c = hh(c, d, a, b, k[11], 16,  1839030562);
+        b = hh(b, c, d, a, k[14], 23, -35309556);
+        a = hh(a, b, c, d, k[1], 4, -1530992060);
+        d = hh(d, a, b, c, k[4], 11,  1272893353);
+        c = hh(c, d, a, b, k[7], 16, -155497632);
+        b = hh(b, c, d, a, k[10], 23, -1094730640);
+        a = hh(a, b, c, d, k[13], 4,  681279174);
+        d = hh(d, a, b, c, k[0], 11, -358537222);
+        c = hh(c, d, a, b, k[3], 16, -722521979);
+        b = hh(b, c, d, a, k[6], 23,  76029189);
+        a = hh(a, b, c, d, k[9], 4, -640364487);
+        d = hh(d, a, b, c, k[12], 11, -421815835);
+        c = hh(c, d, a, b, k[15], 16,  530742520);
+        b = hh(b, c, d, a, k[2], 23, -995338651);
+
+        a = ii(a, b, c, d, k[0], 6, -198630844);
+        d = ii(d, a, b, c, k[7], 10,  1126891415);
+        c = ii(c, d, a, b, k[14], 15, -1416354905);
+        b = ii(b, c, d, a, k[5], 21, -57434055);
+        a = ii(a, b, c, d, k[12], 6,  1700485571);
+        d = ii(d, a, b, c, k[3], 10, -1894986606);
+        c = ii(c, d, a, b, k[10], 15, -1051523);
+        b = ii(b, c, d, a, k[1], 21, -2054922799);
+        a = ii(a, b, c, d, k[8], 6,  1873313359);
+        d = ii(d, a, b, c, k[15], 10, -30611744);
+        c = ii(c, d, a, b, k[6], 15, -1560198380);
+        b = ii(b, c, d, a, k[13], 21,  1309151649);
+        a = ii(a, b, c, d, k[4], 6, -145523070);
+        d = ii(d, a, b, c, k[11], 10, -1120210379);
+        c = ii(c, d, a, b, k[2], 15,  718787259);
+        b = ii(b, c, d, a, k[9], 21, -343485551);
+
+        x[0] = add32(a, x[0]);
+        x[1] = add32(b, x[1]);
+        x[2] = add32(c, x[2]);
+        x[3] = add32(d, x[3]);
+
+      }
+
+      function cmn(q, a, b, x, s, t) {
+        a = add32(add32(a, q), add32(x, t));
+        return add32((a << s) | (a >>> (32 - s)), b);
+      }
+
+      function ff(a, b, c, d, x, s, t) {
+        return cmn((b & c) | ((~b) & d), a, b, x, s, t);
+      }
+
+      function gg(a, b, c, d, x, s, t) {
+        return cmn((b & d) | (c & (~d)), a, b, x, s, t);
+      }
+
+      function hh(a, b, c, d, x, s, t) {
+        return cmn(b ^ c ^ d, a, b, x, s, t);
+      }
+
+      function ii(a, b, c, d, x, s, t) {
+        return cmn(c ^ (b | (~d)), a, b, x, s, t);
+      }
+
+      function md51(s) {
+        txt = '';
+        var n = s.length,
+            state = [1732584193, -271733879, -1732584194, 271733878], i;
+        for (i=64; i<=s.length; i+=64) {
+          md5cycle(state, md5blk(s.substring(i-64, i)));
+        }
+        s = s.substring(i-64);
+        var tail = [0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0];
+        for (i=0; i<s.length; i++)
+          tail[i>>2] |= s.charCodeAt(i) << ((i%4) << 3);
+        tail[i>>2] |= 0x80 << ((i%4) << 3);
+        if (i > 55) {
+          md5cycle(state, tail);
+          for (i=0; i<16; i++) tail[i] = 0;
+        }
+        tail[14] = n*8;
+        md5cycle(state, tail);
+        return state;
+      }
+
+      function md5blk(s) {
+        var md5blks = [], i;
+        for (i=0; i<64; i+=4) {
+          md5blks[i>>2] = s.charCodeAt(i) + (s.charCodeAt(i+1) << 8) + (s.charCodeAt(i+2) << 16) + (s.charCodeAt(i+3) << 24);
+        }
+        return md5blks;
+      }
+
+      var hex_chr = '0123456789abcdef'.split('');
+
+      function rhex(n)
+      {
+        var s='', j=0;
+        for(; j<4; j++)
+          s += hex_chr[(n >> (j * 8 + 4)) & 0x0F] + hex_chr[(n >> (j * 8)) & 0x0F];
+        return s;
+      }
+
+      function hex(x) {
+        for (var i=0; i<x.length; i++)
+          x[i] = rhex(x[i]);
+        return x.join('');
+      }
+
+      function md5(s) {
+        return hex(md51(s));
+      }
+
+      function add32(a, b) {
+        return (a + b) & 0xFFFFFFFF;
+      }
+
+      if (md5('hello') !== '5d41402abc4b2a76b9719d911017c592') {
+        function add32(x, y) {
+          var lsw = (x & 0xFFFF) + (y & 0xFFFF),
+              msw = (x >> 16) + (y >> 16) + (lsw >> 16);
+          return (msw << 16) | (lsw & 0xFFFF);
+        }
+      }
+
+      return md5(str);
+    }
   };
 
   if (!RemoteStorage.prototype.util) {
@@ -4554,7 +4792,7 @@ module.exports = ret;
 
     onErrorCb = function (error){
       if (error instanceof RemoteStorage.Unauthorized) {
-        this.configure(undefined, undefined, undefined, null);
+        this.configure({token: null});
       }
     }.bind(this);
     rs.on('error', onErrorCb);
@@ -4563,7 +4801,7 @@ module.exports = ret;
       try { settings = JSON.parse(localStorage[SETTINGS_KEY]); } catch(e) {}
       if (settings) {
         setTimeout(function () {
-          this.configure(settings.userAddress, settings.href, settings.storageApi, settings.token);
+          this.configure(settings);
         }.bind(this), 0);
       }
     }
@@ -4687,20 +4925,48 @@ module.exports = ret;
       });
     },
 
-    configure: function (userAddress, href, storageApi, token) {
-      if (typeof(userAddress) !== 'undefined') {
-        this.userAddress = userAddress;
+    /**
+     *
+     * Method: configure
+     *
+     * Sets the userAddress, href, storageApi, token, and properties of a
+     * remote store. Also sets connected and online to true and emits the
+     * 'connected' event, if both token and href are present.
+     *
+     * Parameters:
+     *   settings - An object that may contain userAddress (string or null),
+     *              href (string or null), storageApi (string or null), token (string
+     *              or null), and/or properties (the JSON-parsed properties object
+     *              from the user's WebFinger record, see section 10 of
+     *              http://tools.ietf.org/html/draft-dejong-remotestorage-03
+     *              or null).
+     *              Fields that are not included (i.e. `undefined`), stay at
+     *              their current value. To set a field, include that field
+     *              with a `string` value. To reset a field, for instance when
+     *              the user disconnected their storage, or you found that the
+     *              token you have has expired, simply set that field to `null`.
+     */
+    configure: function (settings) {
+      if (typeof settings !== 'object') {
+        throw new Error('WireClient configure settings parameter should be an object');
       }
-      if (typeof(href) !== 'undefined') {
-        this.href = href;
+      if (typeof settings.userAddress !== 'undefined') {
+        this.userAddress = settings.userAddress;
       }
-      if (typeof(storageApi) !== 'undefined') {
-        this.storageApi = storageApi;
+      if (typeof settings.href !== 'undefined') {
+        this.href = settings.href;
       }
-      if (typeof(token) !== 'undefined') {
-        this.token = token;
+      if (typeof settings.storageApi !== 'undefined') {
+        this.storageApi = settings.storageApi;
       }
-      if (typeof(this.storageApi) !== 'undefined') {
+      if (typeof settings.token !== 'undefined') {
+        this.token = settings.token;
+      }
+      if (typeof settings.properties !== 'undefined') {
+        this.properties = settings.properties;
+      }
+
+      if (typeof this.storageApi !== 'undefined') {
         this._storageApi = STORAGE_APIS[this.storageApi] || API_HEAD;
         this.supportsRevs = this._storageApi >= API_00;
       }
@@ -4715,13 +4981,11 @@ module.exports = ret;
         localStorage[SETTINGS_KEY] = JSON.stringify({
           userAddress: this.userAddress,
           href: this.href,
+          storageApi: this.storageApi,
           token: this.token,
-          storageApi: this.storageApi
+          properties: this.properties
         });
       }
-      RS.WireClient.configureHooks.forEach(function (hook) {
-        hook.call(this);
-      }.bind(this));
     },
 
     stopWaitingForToken: function () {
@@ -4893,7 +5157,6 @@ module.exports = ret;
     }
   });
 
-  RS.WireClient.configureHooks = [];
 
   RS.WireClient._rs_init = function (remoteStorage) {
     hasLocalStorage = remoteStorage.localStorageAvailable();
@@ -4928,84 +5191,66 @@ module.exports = ret;
   /**
    * Class: RemoteStorage.Discover
    *
-   * This class deals with the Webfinger lookup, discovering a connecting
+   * This function deals with the Webfinger lookup, discovering a connecting
    * user's storage details.
    *
    * The discovery timeout can be configured via
    * `RemoteStorage.config.discoveryTimeout` (in ms).
    *
    * Arguments:
+   *
    *   userAddress - user@host
-   *   callback    - gets called with href of the storage, the type and the authURL
+   *
+   * Returns:
+   *
+   * A promise for an object with the following properties.
+   *
+   *   href - Storage base URL,
+   *   storageType - Storage type,
+   *   authUrl - OAuth URL,
+   *   properties - Webfinger link properties
    **/
 
-  RemoteStorage.Discover = function (userAddress, callback) {
+  RemoteStorage.Discover = function (userAddress) {
     if (userAddress in cachedInfo) {
-      var info = cachedInfo[userAddress];
-      callback(info.href, info.type, info.authURL);
-      return;
+      return Promise.resolve(cachedInfo[userAddress]);
     }
-    var hostname = userAddress.split('@')[1];
-    var params = '?resource=' + encodeURIComponent('acct:' + userAddress);
-    var urls = [
-      'https://' + hostname + '/.well-known/webfinger' + params,
-      'http://' + hostname + '/.well-known/webfinger' + params
-    ];
 
-    function tryOne() {
-      var xhr = new XMLHttpRequest();
-      var url = urls.shift();
-      if (!url) { return callback(); }
-      RemoteStorage.log('[Discover] Trying URL', url);
-      xhr.open('GET', url, true);
-      xhr.onabort = xhr.onerror = function () {
-        console.error("webfinger error", arguments, '(', url, ')');
-        tryOne();
-      };
-      xhr.onload = function () {
-        if (xhr.status !== 200) { return tryOne(); }
-        var profile;
+    var webFinger = new WebFinger({
+      tls_only: false,
+      uri_fallback: true,
+      request_timeout: 5000
+    });
 
-        try {
-          profile = JSON.parse(xhr.responseText);
-        } catch(e) {
-          RemoteStorage.log("[Discover] Failed to parse profile ", xhr.responseText, e);
-          tryOne();
-          return;
-        }
+    var pending = Promise.defer();
 
-        if (!profile.links) {
-          RemoteStorage.log("[Discover] Profile has no links section ", JSON.stringify(profile));
-          tryOne();
-          return;
-        }
+    webFinger.lookup(userAddress, function (err, response) {
+      if (err) {
+        return pending.reject(err.message);
+      } else if ((typeof response.idx.links.remotestorage !== 'object') ||
+                 (typeof response.idx.links.remotestorage.length !== 'number') ||
+                 (response.idx.links.remotestorage.length <= 0)) {
+        RemoteStorage.log("[Discover] WebFinger record for " + userAddress + " does not have remotestorage defined in the links section ", JSON.stringify(response.json));
+        return pending.reject("WebFinger record for " + userAddress + " does not have remotestorage defined in the links section.");
+      }
 
-        var link;
-        profile.links.forEach(function (l) {
-          if (l.rel === 'remotestorage') {
-            link = l;
-          } else if (l.rel === 'remoteStorage' && !link) {
-            link = l;
-          }
-        });
-        RemoteStorage.log('[Discover] Got profile', profile, 'and link', link);
-        if (link) {
-          var authURL = link.properties['http://tools.ietf.org/html/rfc6749#section-4.2']
-                  || link.properties['auth-endpoint'],
-            storageType = link.properties['http://remotestorage.io/spec/version']
-                  || link.type;
-          cachedInfo[userAddress] = { href: link.href, type: storageType, authURL: authURL };
-          if (hasLocalStorage) {
-            localStorage[SETTINGS_KEY] = JSON.stringify({ cache: cachedInfo });
-          }
-          callback(link.href, storageType, authURL);
-        } else {
-          tryOne();
-        }
-      };
-      xhr.send();
-    }
-    tryOne();
+      var rs = response.idx.links.remotestorage[0];
+      var authURL = rs.properties['http://tools.ietf.org/html/rfc6749#section-4.2'] ||
+                    rs.properties['auth-endpoint'];
+      var storageType = rs.properties['http://remotestorage.io/spec/version'] ||
+                        rs.type;
+
+      // cache fetched data
+      cachedInfo[userAddress] = { href: rs.href, storageType: storageType, authURL: authURL, properties: rs.properties };
+
+      if (hasLocalStorage) {
+        localStorage[SETTINGS_KEY] = JSON.stringify({ cache: cachedInfo });
+      }
+
+      return pending.resolve(cachedInfo[userAddress]);
+    });
+
+    return pending.promise;
   };
 
   RemoteStorage.Discover._rs_init = function (remoteStorage) {
@@ -5033,6 +5278,312 @@ module.exports = ret;
 })(typeof(window) !== 'undefined' ? window : global);
 
 
+/** FILE: node_modules/webfinger.js/src/webfinger.js **/
+// -*- mode:js; js-indent-level:2 -*-
+/*!
+ * webfinger.js
+ *   version 2.0.5
+ *   http://github.com/silverbucket/webfinger.js
+ *
+ * Developed and Maintained by:
+ *   Nick Jennings <nick@silverbucket.net> 2012 - 2014
+ *
+ * webfinger.js is released under the AGPL (see LICENSE).
+ *
+ * You don't have to do anything special to choose one license or the other and you don't
+ * have to notify anyone which license you are using.
+ * Please see the corresponding license file for details of these licenses.
+ * You are free to use, modify and distribute this software, but all copyright
+ * information must remain.
+ *
+ */
+
+if (typeof XMLHttpRequest === 'undefined') {
+  XMLHttpRequest = require('xmlhttprequest').XMLHttpRequest;
+}
+
+if (typeof window === 'undefined') {
+  var window = {};
+}
+
+(function (window, undefined) {
+
+  // URI to property name map
+  var LINK_URI_MAPS = {
+    'http://webfist.org/spec/rel': 'webfist',
+    'http://webfinger.net/rel/avatar': 'avatar',
+    'remotestorage': 'remotestorage',
+    'remoteStorage': 'remotestorage',
+    'http://www.packetizer.com/rel/share': 'share',
+    'http://webfinger.net/rel/profile-page': 'profile',
+    'me': 'profile',
+    'vcard': 'vcard',
+    'blog': 'blog',
+    'http://packetizer.com/rel/blog': 'blog',
+    'http://schemas.google.com/g/2010#updates-from': 'updates',
+    'https://camlistore.org/rel/server': 'camilstore'
+  };
+  var LINK_PROPERTIES = {
+    'avatar': [],
+    'remotestorage': [],
+    'blog': [],
+    'vcard': [],
+    'updates': [],
+    'share': [],
+    'profile': [],
+    'webfist': [],
+    'camilstore': []
+  };
+
+  // list of endpoints to try, fallback from beginning to end.
+  var URIS = ['webfinger', 'host-meta', 'host-meta.json'];
+  var LOGABLE = false;
+  if ((typeof console === 'object') && (typeof console.log === 'function')) {
+    LOGABLE = true;
+  }
+
+  function _err(obj) {
+    obj.toString = function () {
+      return this.message;
+    };
+    return obj;
+  }
+
+  /**
+   * Function: WebFinger
+   *
+   * WebFinger constructor
+   *
+   * Returns:
+   *
+   *   return WebFinger object
+   */
+  function WebFinger(config) {
+    if (typeof config !== 'object') {
+      config = {};
+    }
+
+    this.config = {
+      debug:            (typeof config.debug !== 'undefined') ? config.debug : false,
+      tls_only:         (typeof config.tls_only !== 'undefined') ? config.tls_only : true,
+      webfist_fallback: (typeof config.webfist_fallback !== 'undefined') ? config.webfist_fallback : false,
+      uri_fallback:     (typeof config.uri_fallback !== 'undefined') ? config.uri_fallback : false,
+      request_timeout:  (typeof config.request_timeout !== 'undefined') ? config.request_timeout : 10000
+    };
+  }
+
+
+  // make an http request and look for JRD response, fails if request fails
+  // or response not json.
+  WebFinger.prototype._fetchJRD = function (url, cb) {
+    var self = this;
+    self._log('Request URL: ' + url);
+    var xhr = new XMLHttpRequest();
+
+    xhr.onreadystatechange = function () {
+      if (xhr.readyState === 4) {
+        if (xhr.status === 200) {
+          if (self._isValidJSON(xhr.responseText)) {
+            cb(null, xhr.responseText);
+          } else {
+            cb(_err({
+              message: 'invalid json',
+              url: url,
+              status: xhr.status
+            }));
+          }
+        } else if (xhr.status === 404) {
+          cb(_err({
+            message: 'webfinger endpoint unreachable',
+            url: url,
+            status: xhr.status
+          }));
+        } else {
+          cb(_err({
+            message: 'error during request',
+            url: url,
+            status: xhr.status
+          }));
+        }
+      }
+    };
+
+    xhr.open('GET', url, true);
+    xhr.setRequestHeader('Accept', 'application/jrd+json, application/json');
+    xhr.send();
+  };
+
+  WebFinger.prototype._isValidJSON = function (str) {
+    try {
+      JSON.parse(str);
+    } catch (e) {
+      return false;
+    }
+    return true;
+  };
+
+  WebFinger.prototype._isLocalhost = function (host) {
+    console.log('checking: ', host);
+    var local = /^localhost(\.localdomain)?(\:[0-9]+)?$/;
+    return local.test(host);
+  };
+
+  WebFinger.prototype._log = function () {
+    var args = Array.prototype.splice.call(arguments, 0);
+    if ((this.config.debug) && (LOGABLE)) {
+      console.log.apply(window.console, args);
+    }
+  };
+
+  // processes JRD object as if it's a webfinger response object
+  // looks for known properties and adds them to profile datat struct.
+  WebFinger.prototype._processJRD = function (JRD, cb) {
+    var self = this;
+    var parsedJRD = JSON.parse(JRD);
+    if ((typeof parsedJRD !== 'object') ||
+        (typeof parsedJRD.links !== 'object')) {
+      if (typeof parsedJRD.error !== 'undefined') {
+        cb(_err({ message: parsedJRD.error }));
+      } else {
+        cb(_err({ message: 'received unknown response from server' }));
+      }
+      return false;
+    }
+
+    var links = parsedJRD.links;
+    var result = {  // webfinger JRD - object, json, and our own indexing
+      object: parsedJRD,
+      json: JRD,
+      idx: {}
+    };
+
+    result.idx.properties = {
+      'name': undefined
+    };
+    result.idx.links = JSON.parse(JSON.stringify(LINK_PROPERTIES));
+
+    // process links
+    links.map(function (link, i) {
+      if (LINK_URI_MAPS.hasOwnProperty(link.rel)) {
+        if (result.idx.links[LINK_URI_MAPS[link.rel]]) {
+          var entry = {};
+          Object.keys(link).map(function (item, n) {
+            entry[item] = link[item];
+          });
+          result.idx.links[LINK_URI_MAPS[link.rel]].push(entry);
+        } else {
+          self._log('URI ' + links[i].rel + ' has no corresponding link property ' + LINK_URI_MAPS[link.rel]);
+        }
+      }
+    });
+
+    // process properties
+    var props = JSON.parse(JRD).properties;
+    for (var key in props) {
+      if (props.hasOwnProperty(key)) {
+        if (key === 'http://packetizer.com/ns/name') {
+          result.idx.properties.name = props[key];
+        }
+      }
+    }
+    cb(null, result);
+  };
+
+  WebFinger.prototype.lookup = function (address, cb) {
+    if (typeof address !== 'string') {
+      throw new Error('first parameter must be a user address');
+    } else if (typeof cb !== 'function') {
+      throw new Error('second parameter must be a callback function');
+    }
+
+    var self = this;
+    var parts = address.replace(/ /g,'').split('@');
+    var host = parts[1];    // host name for this useraddress
+    var uri_index = 0;      // track which URIS we've tried already
+    var protocol = 'https'; // we use https by default
+
+    if (parts.length !== 2) {
+      cb(_err({ message: 'invalid user address ( should be in the format of: user@host.com )' }));
+      return false;
+    } else if (self._isLocalhost(host)) {
+      protocol = 'http';
+    }
+
+    function _buildURL() {
+      return protocol + '://' + host + '/.well-known/' +
+             URIS[uri_index] + '?resource=acct:' + address;
+    }
+
+    // control flow for failures, what to do in various cases, etc.
+    function _fallbackChecks(err) {
+      if ((self.config.uri_fallback) && (host !== 'webfist.org') && (uri_index !== URIS.length - 1)) { // we have uris left to try
+        uri_index = uri_index + 1;
+        _call();
+      } else if ((!self.config.tls_only) && (protocol === 'https')) { // try normal http
+        uri_index = 0;
+        protocol = 'http';
+        _call();
+      } else if ((self.config.webfist_fallback) && (host !== 'webfist.org')) { // webfist attempt
+        uri_index = 0;
+        protocol = 'http';
+        host = 'webfist.org';
+        // webfist will
+        // 1. make a query to the webfist server for the users account
+        // 2. from the response, get a link to the actual webfinger json data
+        //    (stored somewhere in control of the user)
+        // 3. make a request to that url and get the json
+        // 4. process it like a normal webfinger response
+        self._fetchJRD(_buildURL(), function (err, data) { // get link to users JRD
+          if (err) {
+            cb(err);
+            return false;
+          }
+          self._processJRD(data, function (err, result) {
+            if ((typeof result.idx.links.webfist === 'object') &&
+                (typeof result.idx.links.webfist[0].href === 'string')) {
+              self._fetchJRD(result.idx.links.webfist[0].href, function (err, JRD) {
+                if (err) {
+                  cb(err);
+                } else {
+                  self._processJRD(JRD, cb);
+                }
+              });
+            }
+          });
+        });
+      } else {
+        cb(err);
+        return false;
+      }
+    }
+
+    function _call() {
+      // make request
+      self._fetchJRD(_buildURL(), function (err, JRD) {
+        if (err) {
+          _fallbackChecks(err);
+        } else {
+          self._processJRD(JRD, cb);
+        }
+      });
+    }
+
+    setTimeout(_call, 0);
+  };
+
+  window.WebFinger = WebFinger;
+
+})(window);
+
+if (typeof (define) === 'function' && define.amd) {
+  define([], function () { return window.WebFinger; });
+} else {
+  try {
+    module.exports = window.WebFinger;
+  } catch (e) {}
+}
+
+
 /** FILE: src/authorize.js **/
 (function (global) {
 
@@ -5055,7 +5606,9 @@ module.exports = ret;
   RemoteStorage.ImpliedAuth = function (storageApi, redirectUri) {
     RemoteStorage.log('ImpliedAuth proceeding due to absent authURL; storageApi = ' + storageApi + ' redirectUri = ' + redirectUri);
     // Set a fixed access token, signalling to not send it as Bearer
-    remoteStorage.remote.configure(undefined, undefined, undefined, RemoteStorage.Authorize.IMPLIED_FAKE_TOKEN);
+    remoteStorage.remote.configure({
+      token: RemoteStorage.Authorize.IMPLIED_FAKE_TOKEN
+    });
     document.location = redirectUri;
   };
 
@@ -5114,7 +5667,7 @@ module.exports = ret;
     RemoteStorage.ImpliedAuth(this.remote.storageApi, String(document.location));
   };
 
-  RemoteStorage.Authorize._rs_supported = function (remoteStorage) {
+  RemoteStorage.Authorize._rs_supported = function () {
     return typeof(document) !== 'undefined';
   };
 
@@ -5128,7 +5681,9 @@ module.exports = ret;
           throw "Authorization server errored: " + params.error;
         }
         if (params.access_token) {
-          remoteStorage.remote.configure(undefined, undefined, undefined, params.access_token);
+          remoteStorage.remote.configure({
+            token: params.access_token
+          });
           authParamsUsed = true;
         }
         if (params.remotestorage) {
@@ -6195,23 +6750,372 @@ RemoteStorage.Assets = {
 })(typeof(window) !== 'undefined' ? window : global);
 
 
-/** FILE: lib/tv4.js **/
-/**
+/** FILE: node_modules/tv4/tv4.js **/
+/*
 Author: Geraint Luff and others
 Year: 2013
 
 This code is released into the "public domain" by its author(s).  Anybody may use, alter and distribute the code without restriction.  The author makes no guarantees, and takes no liability of any kind for use of this code.
 
 If you find a bug or make an improvement, it would be courteous to let the author know, but it is not compulsory.
-**/
+*/
+(function (global, factory) {
+  if (typeof define === 'function' && define.amd) {
+    // AMD. Register as an anonymous module.
+    define([], factory);
+  } else if (typeof module !== 'undefined' && module.exports){
+    // CommonJS. Define export.
+    module.exports = factory();
+  } else {
+    // Browser globals
+    global.tv4 = factory();
+  }
+}(this, function () {
 
-(function (global) {
-var ValidatorContext = function (parent, collectMultiple) {
+// https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object/keys?redirectlocale=en-US&redirectslug=JavaScript%2FReference%2FGlobal_Objects%2FObject%2Fkeys
+if (!Object.keys) {
+	Object.keys = (function () {
+		var hasOwnProperty = Object.prototype.hasOwnProperty,
+			hasDontEnumBug = !({toString: null}).propertyIsEnumerable('toString'),
+			dontEnums = [
+				'toString',
+				'toLocaleString',
+				'valueOf',
+				'hasOwnProperty',
+				'isPrototypeOf',
+				'propertyIsEnumerable',
+				'constructor'
+			],
+			dontEnumsLength = dontEnums.length;
+
+		return function (obj) {
+			if (typeof obj !== 'object' && typeof obj !== 'function' || obj === null) {
+				throw new TypeError('Object.keys called on non-object');
+			}
+
+			var result = [];
+
+			for (var prop in obj) {
+				if (hasOwnProperty.call(obj, prop)) {
+					result.push(prop);
+				}
+			}
+
+			if (hasDontEnumBug) {
+				for (var i=0; i < dontEnumsLength; i++) {
+					if (hasOwnProperty.call(obj, dontEnums[i])) {
+						result.push(dontEnums[i]);
+					}
+				}
+			}
+			return result;
+		};
+	})();
+}
+// https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object/create
+if (!Object.create) {
+	Object.create = (function(){
+		function F(){}
+
+		return function(o){
+			if (arguments.length !== 1) {
+				throw new Error('Object.create implementation only accepts one parameter.');
+			}
+			F.prototype = o;
+			return new F();
+		};
+	})();
+}
+// https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array/isArray?redirectlocale=en-US&redirectslug=JavaScript%2FReference%2FGlobal_Objects%2FArray%2FisArray
+if(!Array.isArray) {
+	Array.isArray = function (vArg) {
+		return Object.prototype.toString.call(vArg) === "[object Array]";
+	};
+}
+// https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Array/indexOf?redirectlocale=en-US&redirectslug=JavaScript%2FReference%2FGlobal_Objects%2FArray%2FindexOf
+if (!Array.prototype.indexOf) {
+	Array.prototype.indexOf = function (searchElement /*, fromIndex */ ) {
+		if (this === null) {
+			throw new TypeError();
+		}
+		var t = Object(this);
+		var len = t.length >>> 0;
+
+		if (len === 0) {
+			return -1;
+		}
+		var n = 0;
+		if (arguments.length > 1) {
+			n = Number(arguments[1]);
+			if (n !== n) { // shortcut for verifying if it's NaN
+				n = 0;
+			} else if (n !== 0 && n !== Infinity && n !== -Infinity) {
+				n = (n > 0 || -1) * Math.floor(Math.abs(n));
+			}
+		}
+		if (n >= len) {
+			return -1;
+		}
+		var k = n >= 0 ? n : Math.max(len - Math.abs(n), 0);
+		for (; k < len; k++) {
+			if (k in t && t[k] === searchElement) {
+				return k;
+			}
+		}
+		return -1;
+	};
+}
+
+// Grungey Object.isFrozen hack
+if (!Object.isFrozen) {
+	Object.isFrozen = function (obj) {
+		var key = "tv4_test_frozen_key";
+		while (obj.hasOwnProperty(key)) {
+			key += Math.random();
+		}
+		try {
+			obj[key] = true;
+			delete obj[key];
+			return false;
+		} catch (e) {
+			return true;
+		}
+	};
+}
+// Based on: https://github.com/geraintluff/uri-templates, but with all the de-substitution stuff removed
+
+var uriTemplateGlobalModifiers = {
+	"+": true,
+	"#": true,
+	".": true,
+	"/": true,
+	";": true,
+	"?": true,
+	"&": true
+};
+var uriTemplateSuffices = {
+	"*": true
+};
+
+function notReallyPercentEncode(string) {
+	return encodeURI(string).replace(/%25[0-9][0-9]/g, function (doubleEncoded) {
+		return "%" + doubleEncoded.substring(3);
+	});
+}
+
+function uriTemplateSubstitution(spec) {
+	var modifier = "";
+	if (uriTemplateGlobalModifiers[spec.charAt(0)]) {
+		modifier = spec.charAt(0);
+		spec = spec.substring(1);
+	}
+	var separator = "";
+	var prefix = "";
+	var shouldEscape = true;
+	var showVariables = false;
+	var trimEmptyString = false;
+	if (modifier === '+') {
+		shouldEscape = false;
+	} else if (modifier === ".") {
+		prefix = ".";
+		separator = ".";
+	} else if (modifier === "/") {
+		prefix = "/";
+		separator = "/";
+	} else if (modifier === '#') {
+		prefix = "#";
+		shouldEscape = false;
+	} else if (modifier === ';') {
+		prefix = ";";
+		separator = ";";
+		showVariables = true;
+		trimEmptyString = true;
+	} else if (modifier === '?') {
+		prefix = "?";
+		separator = "&";
+		showVariables = true;
+	} else if (modifier === '&') {
+		prefix = "&";
+		separator = "&";
+		showVariables = true;
+	}
+
+	var varNames = [];
+	var varList = spec.split(",");
+	var varSpecs = [];
+	var varSpecMap = {};
+	for (var i = 0; i < varList.length; i++) {
+		var varName = varList[i];
+		var truncate = null;
+		if (varName.indexOf(":") !== -1) {
+			var parts = varName.split(":");
+			varName = parts[0];
+			truncate = parseInt(parts[1], 10);
+		}
+		var suffices = {};
+		while (uriTemplateSuffices[varName.charAt(varName.length - 1)]) {
+			suffices[varName.charAt(varName.length - 1)] = true;
+			varName = varName.substring(0, varName.length - 1);
+		}
+		var varSpec = {
+			truncate: truncate,
+			name: varName,
+			suffices: suffices
+		};
+		varSpecs.push(varSpec);
+		varSpecMap[varName] = varSpec;
+		varNames.push(varName);
+	}
+	var subFunction = function (valueFunction) {
+		var result = "";
+		var startIndex = 0;
+		for (var i = 0; i < varSpecs.length; i++) {
+			var varSpec = varSpecs[i];
+			var value = valueFunction(varSpec.name);
+			if (value === null || value === undefined || (Array.isArray(value) && value.length === 0) || (typeof value === 'object' && Object.keys(value).length === 0)) {
+				startIndex++;
+				continue;
+			}
+			if (i === startIndex) {
+				result += prefix;
+			} else {
+				result += (separator || ",");
+			}
+			if (Array.isArray(value)) {
+				if (showVariables) {
+					result += varSpec.name + "=";
+				}
+				for (var j = 0; j < value.length; j++) {
+					if (j > 0) {
+						result += varSpec.suffices['*'] ? (separator || ",") : ",";
+						if (varSpec.suffices['*'] && showVariables) {
+							result += varSpec.name + "=";
+						}
+					}
+					result += shouldEscape ? encodeURIComponent(value[j]).replace(/!/g, "%21") : notReallyPercentEncode(value[j]);
+				}
+			} else if (typeof value === "object") {
+				if (showVariables && !varSpec.suffices['*']) {
+					result += varSpec.name + "=";
+				}
+				var first = true;
+				for (var key in value) {
+					if (!first) {
+						result += varSpec.suffices['*'] ? (separator || ",") : ",";
+					}
+					first = false;
+					result += shouldEscape ? encodeURIComponent(key).replace(/!/g, "%21") : notReallyPercentEncode(key);
+					result += varSpec.suffices['*'] ? '=' : ",";
+					result += shouldEscape ? encodeURIComponent(value[key]).replace(/!/g, "%21") : notReallyPercentEncode(value[key]);
+				}
+			} else {
+				if (showVariables) {
+					result += varSpec.name;
+					if (!trimEmptyString || value !== "") {
+						result += "=";
+					}
+				}
+				if (varSpec.truncate != null) {
+					value = value.substring(0, varSpec.truncate);
+				}
+				result += shouldEscape ? encodeURIComponent(value).replace(/!/g, "%21"): notReallyPercentEncode(value);
+			}
+		}
+		return result;
+	};
+	subFunction.varNames = varNames;
+	return {
+		prefix: prefix,
+		substitution: subFunction
+	};
+}
+
+function UriTemplate(template) {
+	if (!(this instanceof UriTemplate)) {
+		return new UriTemplate(template);
+	}
+	var parts = template.split("{");
+	var textParts = [parts.shift()];
+	var prefixes = [];
+	var substitutions = [];
+	var varNames = [];
+	while (parts.length > 0) {
+		var part = parts.shift();
+		var spec = part.split("}")[0];
+		var remainder = part.substring(spec.length + 1);
+		var funcs = uriTemplateSubstitution(spec);
+		substitutions.push(funcs.substitution);
+		prefixes.push(funcs.prefix);
+		textParts.push(remainder);
+		varNames = varNames.concat(funcs.substitution.varNames);
+	}
+	this.fill = function (valueFunction) {
+		var result = textParts[0];
+		for (var i = 0; i < substitutions.length; i++) {
+			var substitution = substitutions[i];
+			result += substitution(valueFunction);
+			result += textParts[i + 1];
+		}
+		return result;
+	};
+	this.varNames = varNames;
+	this.template = template;
+}
+UriTemplate.prototype = {
+	toString: function () {
+		return this.template;
+	},
+	fillFromObject: function (obj) {
+		return this.fill(function (varName) {
+			return obj[varName];
+		});
+	}
+};
+var ValidatorContext = function ValidatorContext(parent, collectMultiple, errorMessages, checkRecursive, trackUnknownProperties) {
 	this.missing = [];
+	this.missingMap = {};
+	this.formatValidators = parent ? Object.create(parent.formatValidators) : {};
 	this.schemas = parent ? Object.create(parent.schemas) : {};
 	this.collectMultiple = collectMultiple;
 	this.errors = [];
 	this.handleError = collectMultiple ? this.collectError : this.returnError;
+	if (checkRecursive) {
+		this.checkRecursive = true;
+		this.scanned = [];
+		this.scannedFrozen = [];
+		this.scannedFrozenSchemas = [];
+		this.scannedFrozenValidationErrors = [];
+		this.validatedSchemasKey = 'tv4_validation_id';
+		this.validationErrorsKey = 'tv4_validation_errors_id';
+	}
+	if (trackUnknownProperties) {
+		this.trackUnknownProperties = true;
+		this.knownPropertyPaths = {};
+		this.unknownPropertyPaths = {};
+	}
+	this.errorMessages = errorMessages;
+	this.definedKeywords = {};
+	if (parent) {
+		for (var key in parent.definedKeywords) {
+			this.definedKeywords[key] = parent.definedKeywords[key].slice(0);
+		}
+	}
+};
+ValidatorContext.prototype.defineKeyword = function (keyword, keywordFunction) {
+	this.definedKeywords[keyword] = this.definedKeywords[keyword] || [];
+	this.definedKeywords[keyword].push(keywordFunction);
+};
+ValidatorContext.prototype.createError = function (code, messageParams, dataPath, schemaPath, subErrors) {
+	var messageTemplate = this.errorMessages[code] || ErrorMessagesDefault[code];
+	if (typeof messageTemplate !== 'string') {
+		return new ValidationError(code, "Unknown error code " + code + ": " + JSON.stringify(messageParams), messageParams, dataPath, schemaPath, subErrors);
+	}
+	// Adapted from Crockford's supplant()
+	var message = messageTemplate.replace(/\{([^{}]*)\}/g, function (whole, varName) {
+		var subValue = messageParams[varName];
+		return typeof subValue === 'string' || typeof subValue === 'number' ? subValue : whole;
+	});
+	return new ValidationError(code, message, messageParams, dataPath, schemaPath, subErrors);
 };
 ValidatorContext.prototype.returnError = function (error) {
 	return error;
@@ -6221,79 +7125,251 @@ ValidatorContext.prototype.collectError = function (error) {
 		this.errors.push(error);
 	}
 	return null;
-}
+};
 ValidatorContext.prototype.prefixErrors = function (startIndex, dataPath, schemaPath) {
 	for (var i = startIndex; i < this.errors.length; i++) {
 		this.errors[i] = this.errors[i].prefixWith(dataPath, schemaPath);
 	}
 	return this;
-}
+};
+ValidatorContext.prototype.banUnknownProperties = function () {
+	for (var unknownPath in this.unknownPropertyPaths) {
+		var error = this.createError(ErrorCodes.UNKNOWN_PROPERTY, {path: unknownPath}, unknownPath, "");
+		var result = this.handleError(error);
+		if (result) {
+			return result;
+		}
+	}
+	return null;
+};
 
-ValidatorContext.prototype.getSchema = function (url) {
-	if (this.schemas[url] != undefined) {
-		var schema = this.schemas[url];
-		return schema;
+ValidatorContext.prototype.addFormat = function (format, validator) {
+	if (typeof format === 'object') {
+		for (var key in format) {
+			this.addFormat(key, format[key]);
+		}
+		return this;
+	}
+	this.formatValidators[format] = validator;
+};
+ValidatorContext.prototype.resolveRefs = function (schema, urlHistory) {
+	if (schema['$ref'] !== undefined) {
+		urlHistory = urlHistory || {};
+		if (urlHistory[schema['$ref']]) {
+			return this.createError(ErrorCodes.CIRCULAR_REFERENCE, {urls: Object.keys(urlHistory).join(', ')}, '', '');
+		}
+		urlHistory[schema['$ref']] = true;
+		schema = this.getSchema(schema['$ref'], urlHistory);
+	}
+	return schema;
+};
+ValidatorContext.prototype.getSchema = function (url, urlHistory) {
+	var schema;
+	if (this.schemas[url] !== undefined) {
+		schema = this.schemas[url];
+		return this.resolveRefs(schema, urlHistory);
 	}
 	var baseUrl = url;
 	var fragment = "";
-	if (url.indexOf('#') != -1) {
+	if (url.indexOf('#') !== -1) {
 		fragment = url.substring(url.indexOf("#") + 1);
 		baseUrl = url.substring(0, url.indexOf("#"));
 	}
-	if (this.schemas[baseUrl] != undefined) {
-		var schema = this.schemas[baseUrl];
+	if (typeof this.schemas[baseUrl] === 'object') {
+		schema = this.schemas[baseUrl];
 		var pointerPath = decodeURIComponent(fragment);
-		if (pointerPath == "") {
-			return schema;
-		} else if (pointerPath.charAt(0) != "/") {
+		if (pointerPath === "") {
+			return this.resolveRefs(schema, urlHistory);
+		} else if (pointerPath.charAt(0) !== "/") {
 			return undefined;
 		}
 		var parts = pointerPath.split("/").slice(1);
 		for (var i = 0; i < parts.length; i++) {
-			var component = parts[i].replace("~1", "/").replace("~0", "~");
-			if (schema[component] == undefined) {
+			var component = parts[i].replace(/~1/g, "/").replace(/~0/g, "~");
+			if (schema[component] === undefined) {
 				schema = undefined;
 				break;
 			}
 			schema = schema[component];
 		}
-		if (schema != undefined) {
-			return schema;
+		if (schema !== undefined) {
+			return this.resolveRefs(schema, urlHistory);
 		}
 	}
-	if (this.missing[baseUrl] == undefined) {
+	if (this.missing[baseUrl] === undefined) {
 		this.missing.push(baseUrl);
 		this.missing[baseUrl] = baseUrl;
+		this.missingMap[baseUrl] = baseUrl;
+	}
+};
+ValidatorContext.prototype.searchSchemas = function (schema, url) {
+	if (schema && typeof schema === "object") {
+		if (typeof schema.id === "string") {
+			if (isTrustedUrl(url, schema.id)) {
+				if (this.schemas[schema.id] === undefined) {
+					this.schemas[schema.id] = schema;
+				}
+			}
+		}
+		for (var key in schema) {
+			if (key !== "enum") {
+				if (typeof schema[key] === "object") {
+					this.searchSchemas(schema[key], url);
+				} else if (key === "$ref") {
+					var uri = getDocumentUri(schema[key]);
+					if (uri && this.schemas[uri] === undefined && this.missingMap[uri] === undefined) {
+						this.missingMap[uri] = uri;
+					}
+				}
+			}
+		}
 	}
 };
 ValidatorContext.prototype.addSchema = function (url, schema) {
-	var map = {};
-	map[url] = schema;
+	//overload
+	if (typeof url !== 'string' || typeof schema === 'undefined') {
+		if (typeof url === 'object' && typeof url.id === 'string') {
+			schema = url;
+			url = schema.id;
+		}
+		else {
+			return;
+		}
+	}
+	if (url === getDocumentUri(url) + "#") {
+		// Remove empty fragment
+		url = getDocumentUri(url);
+	}
+	this.schemas[url] = schema;
+	delete this.missingMap[url];
 	normSchema(schema, url);
-	searchForTrustedSchemas(map, schema, url);
-	for (var key in map) {
-		this.schemas[key] = map[key];
+	this.searchSchemas(schema, url);
+};
+
+ValidatorContext.prototype.getSchemaMap = function () {
+	var map = {};
+	for (var key in this.schemas) {
+		map[key] = this.schemas[key];
 	}
 	return map;
 };
-	
-ValidatorContext.prototype.validateAll = function validateAll(data, schema, dataPathParts, schemaPathParts) {
-	if (schema['$ref'] != undefined) {
-		schema = this.getSchema(schema['$ref']);
-		if (!schema) {
-			return null;
+
+ValidatorContext.prototype.getSchemaUris = function (filterRegExp) {
+	var list = [];
+	for (var key in this.schemas) {
+		if (!filterRegExp || filterRegExp.test(key)) {
+			list.push(key);
 		}
 	}
-	
+	return list;
+};
+
+ValidatorContext.prototype.getMissingUris = function (filterRegExp) {
+	var list = [];
+	for (var key in this.missingMap) {
+		if (!filterRegExp || filterRegExp.test(key)) {
+			list.push(key);
+		}
+	}
+	return list;
+};
+
+ValidatorContext.prototype.dropSchemas = function () {
+	this.schemas = {};
+	this.reset();
+};
+ValidatorContext.prototype.reset = function () {
+	this.missing = [];
+	this.missingMap = {};
+	this.errors = [];
+};
+
+ValidatorContext.prototype.validateAll = function (data, schema, dataPathParts, schemaPathParts, dataPointerPath) {
+	var topLevel;
+	schema = this.resolveRefs(schema);
+	if (!schema) {
+		return null;
+	} else if (schema instanceof ValidationError) {
+		this.errors.push(schema);
+		return schema;
+	}
+
+	var startErrorCount = this.errors.length;
+	var frozenIndex, scannedFrozenSchemaIndex = null, scannedSchemasIndex = null;
+	if (this.checkRecursive && data && typeof data === 'object') {
+		topLevel = !this.scanned.length;
+		if (data[this.validatedSchemasKey]) {
+			var schemaIndex = data[this.validatedSchemasKey].indexOf(schema);
+			if (schemaIndex !== -1) {
+				this.errors = this.errors.concat(data[this.validationErrorsKey][schemaIndex]);
+				return null;
+			}
+		}
+		if (Object.isFrozen(data)) {
+			frozenIndex = this.scannedFrozen.indexOf(data);
+			if (frozenIndex !== -1) {
+				var frozenSchemaIndex = this.scannedFrozenSchemas[frozenIndex].indexOf(schema);
+				if (frozenSchemaIndex !== -1) {
+					this.errors = this.errors.concat(this.scannedFrozenValidationErrors[frozenIndex][frozenSchemaIndex]);
+					return null;
+				}
+			}
+		}
+		this.scanned.push(data);
+		if (Object.isFrozen(data)) {
+			if (frozenIndex === -1) {
+				frozenIndex = this.scannedFrozen.length;
+				this.scannedFrozen.push(data);
+				this.scannedFrozenSchemas.push([]);
+			}
+			scannedFrozenSchemaIndex = this.scannedFrozenSchemas[frozenIndex].length;
+			this.scannedFrozenSchemas[frozenIndex][scannedFrozenSchemaIndex] = schema;
+			this.scannedFrozenValidationErrors[frozenIndex][scannedFrozenSchemaIndex] = [];
+		} else {
+			if (!data[this.validatedSchemasKey]) {
+				try {
+					Object.defineProperty(data, this.validatedSchemasKey, {
+						value: [],
+						configurable: true
+					});
+					Object.defineProperty(data, this.validationErrorsKey, {
+						value: [],
+						configurable: true
+					});
+				} catch (e) {
+					//IE 7/8 workaround
+					data[this.validatedSchemasKey] = [];
+					data[this.validationErrorsKey] = [];
+				}
+			}
+			scannedSchemasIndex = data[this.validatedSchemasKey].length;
+			data[this.validatedSchemasKey][scannedSchemasIndex] = schema;
+			data[this.validationErrorsKey][scannedSchemasIndex] = [];
+		}
+	}
+
 	var errorCount = this.errors.length;
-	var error = this.validateBasic(data, schema)
-		|| this.validateNumeric(data, schema)
-		|| this.validateString(data, schema)
-		|| this.validateArray(data, schema)
-		|| this.validateObject(data, schema)
-		|| this.validateCombinations(data, schema)
-		|| null
-	if (error || errorCount != this.errors.length) {
+	var error = this.validateBasic(data, schema, dataPointerPath)
+		|| this.validateNumeric(data, schema, dataPointerPath)
+		|| this.validateString(data, schema, dataPointerPath)
+		|| this.validateArray(data, schema, dataPointerPath)
+		|| this.validateObject(data, schema, dataPointerPath)
+		|| this.validateCombinations(data, schema, dataPointerPath)
+		|| this.validateHypermedia(data, schema, dataPointerPath)
+		|| this.validateFormat(data, schema, dataPointerPath)
+		|| this.validateDefinedKeywords(data, schema, dataPointerPath)
+		|| null;
+
+	if (topLevel) {
+		while (this.scanned.length) {
+			var item = this.scanned.pop();
+			delete item[this.validatedSchemasKey];
+		}
+		this.scannedFrozen = [];
+		this.scannedFrozenSchemas = [];
+	}
+
+	if (error || errorCount !== this.errors.length) {
 		while ((dataPathParts && dataPathParts.length) || (schemaPathParts && schemaPathParts.length)) {
 			var dataPart = (dataPathParts && dataPathParts.length) ? "" + dataPathParts.pop() : null;
 			var schemaPart = (schemaPathParts && schemaPathParts.length) ? "" + schemaPathParts.pop() : null;
@@ -6303,20 +7379,65 @@ ValidatorContext.prototype.validateAll = function validateAll(data, schema, data
 			this.prefixErrors(errorCount, dataPart, schemaPart);
 		}
 	}
-		
+
+	if (scannedFrozenSchemaIndex !== null) {
+		this.scannedFrozenValidationErrors[frozenIndex][scannedFrozenSchemaIndex] = this.errors.slice(startErrorCount);
+	} else if (scannedSchemasIndex !== null) {
+		data[this.validationErrorsKey][scannedSchemasIndex] = this.errors.slice(startErrorCount);
+	}
+
 	return this.handleError(error);
-}
+};
+ValidatorContext.prototype.validateFormat = function (data, schema) {
+	if (typeof schema.format !== 'string' || !this.formatValidators[schema.format]) {
+		return null;
+	}
+	var errorMessage = this.formatValidators[schema.format].call(null, data, schema);
+	if (typeof errorMessage === 'string' || typeof errorMessage === 'number') {
+		return this.createError(ErrorCodes.FORMAT_CUSTOM, {message: errorMessage}).prefixWith(null, "format");
+	} else if (errorMessage && typeof errorMessage === 'object') {
+		return this.createError(ErrorCodes.FORMAT_CUSTOM, {message: errorMessage.message || "?"}, errorMessage.dataPath || null, errorMessage.schemaPath || "/format");
+	}
+	return null;
+};
+ValidatorContext.prototype.validateDefinedKeywords = function (data, schema) {
+	for (var key in this.definedKeywords) {
+		if (typeof schema[key] === 'undefined') {
+			continue;
+		}
+		var validationFunctions = this.definedKeywords[key];
+		for (var i = 0; i < validationFunctions.length; i++) {
+			var func = validationFunctions[i];
+			var result = func(data, schema[key], schema);
+			if (typeof result === 'string' || typeof result === 'number') {
+				return this.createError(ErrorCodes.KEYWORD_CUSTOM, {key: key, message: result}).prefixWith(null, "format");
+			} else if (result && typeof result === 'object') {
+				var code = result.code || ErrorCodes.KEYWORD_CUSTOM;
+				if (typeof code === 'string') {
+					if (!ErrorCodes[code]) {
+						throw new Error('Undefined error code (use defineError): ' + code);
+					}
+					code = ErrorCodes[code];
+				}
+				var messageParams = (typeof result.message === 'object') ? result.message : {key: key, message: result.message || "?"};
+				var schemaPath = result.schemaPath ||( "/" + key.replace(/~/g, '~0').replace(/\//g, '~1'));
+				return this.createError(code, messageParams, result.dataPath || null, schemaPath);
+			}
+		}
+	}
+	return null;
+};
 
 function recursiveCompare(A, B) {
 	if (A === B) {
 		return true;
 	}
-	if (typeof A == "object" && typeof B == "object") {
-		if (Array.isArray(A) != Array.isArray(B)) {
+	if (typeof A === "object" && typeof B === "object") {
+		if (Array.isArray(A) !== Array.isArray(B)) {
 			return false;
 		} else if (Array.isArray(A)) {
-			if (A.length != B.length) {
-				return false
+			if (A.length !== B.length) {
+				return false;
 			}
 			for (var i = 0; i < A.length; i++) {
 				if (!recursiveCompare(A[i], B[i])) {
@@ -6324,17 +7445,18 @@ function recursiveCompare(A, B) {
 				}
 			}
 		} else {
-			for (var key in A) {
+			var key;
+			for (key in A) {
 				if (B[key] === undefined && A[key] !== undefined) {
 					return false;
 				}
 			}
-			for (var key in B) {
+			for (key in B) {
 				if (A[key] === undefined && B[key] !== undefined) {
 					return false;
 				}
 			}
-			for (var key in A) {
+			for (key in A) {
 				if (!recursiveCompare(A[key], B[key])) {
 					return false;
 				}
@@ -6345,43 +7467,43 @@ function recursiveCompare(A, B) {
 	return false;
 }
 
-ValidatorContext.prototype.validateBasic = function validateBasic(data, schema) {
+ValidatorContext.prototype.validateBasic = function validateBasic(data, schema, dataPointerPath) {
 	var error;
-	if (error = this.validateType(data, schema)) {
+	if (error = this.validateType(data, schema, dataPointerPath)) {
 		return error.prefixWith(null, "type");
 	}
-	if (error = this.validateEnum(data, schema)) {
+	if (error = this.validateEnum(data, schema, dataPointerPath)) {
 		return error.prefixWith(null, "type");
 	}
 	return null;
-}
+};
 
 ValidatorContext.prototype.validateType = function validateType(data, schema) {
-	if (schema.type == undefined) {
+	if (schema.type === undefined) {
 		return null;
 	}
 	var dataType = typeof data;
-	if (data == null) {
+	if (data === null) {
 		dataType = "null";
 	} else if (Array.isArray(data)) {
 		dataType = "array";
 	}
 	var allowedTypes = schema.type;
-	if (typeof allowedTypes != "object") {
+	if (typeof allowedTypes !== "object") {
 		allowedTypes = [allowedTypes];
 	}
-	
+
 	for (var i = 0; i < allowedTypes.length; i++) {
 		var type = allowedTypes[i];
-		if (type == dataType || (type == "integer" && dataType == "number" && (data%1 == 0))) {
+		if (type === dataType || (type === "integer" && dataType === "number" && (data % 1 === 0))) {
 			return null;
 		}
 	}
-	return new ValidationError(ErrorCodes.INVALID_TYPE, "invalid data type: " + dataType);
-}
+	return this.createError(ErrorCodes.INVALID_TYPE, {type: dataType, expected: allowedTypes.join("/")});
+};
 
 ValidatorContext.prototype.validateEnum = function validateEnum(data, schema) {
-	if (schema["enum"] == undefined) {
+	if (schema["enum"] === undefined) {
 		return null;
 	}
 	for (var i = 0; i < schema["enum"].length; i++) {
@@ -6390,118 +7512,132 @@ ValidatorContext.prototype.validateEnum = function validateEnum(data, schema) {
 			return null;
 		}
 	}
-	return new ValidationError(ErrorCodes.ENUM_MISMATCH, "No enum match for: " + JSON.stringify(data));
-}
-ValidatorContext.prototype.validateNumeric = function validateNumeric(data, schema) {
-	return this.validateMultipleOf(data, schema)
-		|| this.validateMinMax(data, schema)
+	return this.createError(ErrorCodes.ENUM_MISMATCH, {value: (typeof JSON !== 'undefined') ? JSON.stringify(data) : data});
+};
+
+ValidatorContext.prototype.validateNumeric = function validateNumeric(data, schema, dataPointerPath) {
+	return this.validateMultipleOf(data, schema, dataPointerPath)
+		|| this.validateMinMax(data, schema, dataPointerPath)
+		|| this.validateNaN(data, schema, dataPointerPath)
 		|| null;
-}
+};
 
 ValidatorContext.prototype.validateMultipleOf = function validateMultipleOf(data, schema) {
 	var multipleOf = schema.multipleOf || schema.divisibleBy;
-	if (multipleOf == undefined) {
+	if (multipleOf === undefined) {
 		return null;
 	}
-	if (typeof data == "number") {
-		if (data%multipleOf != 0) {
-			return new ValidationError(ErrorCodes.NUMBER_MULTIPLE_OF, "Value " + data + " is not a multiple of " + multipleOf);
+	if (typeof data === "number") {
+		if (data % multipleOf !== 0) {
+			return this.createError(ErrorCodes.NUMBER_MULTIPLE_OF, {value: data, multipleOf: multipleOf});
 		}
 	}
 	return null;
-}
+};
 
 ValidatorContext.prototype.validateMinMax = function validateMinMax(data, schema) {
-	if (typeof data != "number") {
+	if (typeof data !== "number") {
 		return null;
 	}
-	if (schema.minimum != undefined) {
+	if (schema.minimum !== undefined) {
 		if (data < schema.minimum) {
-			return new ValidationError(ErrorCodes.NUMBER_MINIMUM, "Value " + data + " is less than minimum " + schema.minimum).prefixWith(null, "minimum");
+			return this.createError(ErrorCodes.NUMBER_MINIMUM, {value: data, minimum: schema.minimum}).prefixWith(null, "minimum");
 		}
-		if (schema.exclusiveMinimum && data == schema.minimum) {
-			return new ValidationError(ErrorCodes.NUMBER_MINIMUM_EXCLUSIVE, "Value "+ data + " is equal to exclusive minimum " + schema.minimum).prefixWith(null, "exclusiveMinimum");
+		if (schema.exclusiveMinimum && data === schema.minimum) {
+			return this.createError(ErrorCodes.NUMBER_MINIMUM_EXCLUSIVE, {value: data, minimum: schema.minimum}).prefixWith(null, "exclusiveMinimum");
 		}
 	}
-	if (schema.maximum != undefined) {
+	if (schema.maximum !== undefined) {
 		if (data > schema.maximum) {
-			return new ValidationError(ErrorCodes.NUMBER_MAXIMUM, "Value " + data + " is greater than maximum " + schema.maximum).prefixWith(null, "maximum");
+			return this.createError(ErrorCodes.NUMBER_MAXIMUM, {value: data, maximum: schema.maximum}).prefixWith(null, "maximum");
 		}
-		if (schema.exclusiveMaximum && data == schema.maximum) {
-			return new ValidationError(ErrorCodes.NUMBER_MAXIMUM_EXCLUSIVE, "Value "+ data + " is equal to exclusive maximum " + schema.maximum).prefixWith(null, "exclusiveMaximum");
+		if (schema.exclusiveMaximum && data === schema.maximum) {
+			return this.createError(ErrorCodes.NUMBER_MAXIMUM_EXCLUSIVE, {value: data, maximum: schema.maximum}).prefixWith(null, "exclusiveMaximum");
 		}
 	}
 	return null;
-}
-ValidatorContext.prototype.validateString = function validateString(data, schema) {
-	return this.validateStringLength(data, schema)
-		|| this.validateStringPattern(data, schema)
+};
+
+ValidatorContext.prototype.validateNaN = function validateNaN(data) {
+	if (typeof data !== "number") {
+		return null;
+	}
+	if (isNaN(data) === true || data === Infinity || data === -Infinity) {
+		return this.createError(ErrorCodes.NUMBER_NOT_A_NUMBER, {value: data}).prefixWith(null, "type");
+	}
+	return null;
+};
+
+ValidatorContext.prototype.validateString = function validateString(data, schema, dataPointerPath) {
+	return this.validateStringLength(data, schema, dataPointerPath)
+		|| this.validateStringPattern(data, schema, dataPointerPath)
 		|| null;
-}
+};
 
 ValidatorContext.prototype.validateStringLength = function validateStringLength(data, schema) {
-	if (typeof data != "string") {
+	if (typeof data !== "string") {
 		return null;
 	}
-	if (schema.minLength != undefined) {
+	if (schema.minLength !== undefined) {
 		if (data.length < schema.minLength) {
-			return new ValidationError(ErrorCodes.STRING_LENGTH_SHORT, "String is too short (" + data.length + " chars), minimum " + schema.minLength).prefixWith(null, "minLength");
+			return this.createError(ErrorCodes.STRING_LENGTH_SHORT, {length: data.length, minimum: schema.minLength}).prefixWith(null, "minLength");
 		}
 	}
-	if (schema.maxLength != undefined) {
+	if (schema.maxLength !== undefined) {
 		if (data.length > schema.maxLength) {
-			return new ValidationError(ErrorCodes.STRING_LENGTH_LONG, "String is too long (" + data.length + " chars), maximum " + schema.maxLength).prefixWith(null, "maxLength");
+			return this.createError(ErrorCodes.STRING_LENGTH_LONG, {length: data.length, maximum: schema.maxLength}).prefixWith(null, "maxLength");
 		}
 	}
 	return null;
-}
+};
 
 ValidatorContext.prototype.validateStringPattern = function validateStringPattern(data, schema) {
-	if (typeof data != "string" || schema.pattern == undefined) {
+	if (typeof data !== "string" || schema.pattern === undefined) {
 		return null;
 	}
 	var regexp = new RegExp(schema.pattern);
 	if (!regexp.test(data)) {
-		return new ValidationError(ErrorCodes.STRING_PATTERN, "String does not match pattern").prefixWith(null, "pattern");
+		return this.createError(ErrorCodes.STRING_PATTERN, {pattern: schema.pattern}).prefixWith(null, "pattern");
 	}
 	return null;
-}
-ValidatorContext.prototype.validateArray = function validateArray(data, schema) {
+};
+ValidatorContext.prototype.validateArray = function validateArray(data, schema, dataPointerPath) {
 	if (!Array.isArray(data)) {
 		return null;
 	}
-	return this.validateArrayLength(data, schema)
-		|| this.validateArrayUniqueItems(data, schema)
-		|| this.validateArrayItems(data, schema)
+	return this.validateArrayLength(data, schema, dataPointerPath)
+		|| this.validateArrayUniqueItems(data, schema, dataPointerPath)
+		|| this.validateArrayItems(data, schema, dataPointerPath)
 		|| null;
-}
+};
 
 ValidatorContext.prototype.validateArrayLength = function validateArrayLength(data, schema) {
-	if (schema.minItems != undefined) {
+	var error;
+	if (schema.minItems !== undefined) {
 		if (data.length < schema.minItems) {
-			var error = (new ValidationError(ErrorCodes.ARRAY_LENGTH_SHORT, "Array is too short (" + data.length + "), minimum " + schema.minItems)).prefixWith(null, "minItems");
+			error = (this.createError(ErrorCodes.ARRAY_LENGTH_SHORT, {length: data.length, minimum: schema.minItems})).prefixWith(null, "minItems");
 			if (this.handleError(error)) {
 				return error;
 			}
 		}
 	}
-	if (schema.maxItems != undefined) {
+	if (schema.maxItems !== undefined) {
 		if (data.length > schema.maxItems) {
-			var error = (new ValidationError(ErrorCodes.ARRAY_LENGTH_LONG, "Array is too long (" + data.length + " chars), maximum " + schema.maxItems)).prefixWith(null, "maxItems");
+			error = (this.createError(ErrorCodes.ARRAY_LENGTH_LONG, {length: data.length, maximum: schema.maxItems})).prefixWith(null, "maxItems");
 			if (this.handleError(error)) {
 				return error;
 			}
 		}
 	}
 	return null;
-}
+};
 
 ValidatorContext.prototype.validateArrayUniqueItems = function validateArrayUniqueItems(data, schema) {
 	if (schema.uniqueItems) {
 		for (var i = 0; i < data.length; i++) {
 			for (var j = i + 1; j < data.length; j++) {
 				if (recursiveCompare(data[i], data[j])) {
-					var error = (new ValidationError(ErrorCodes.ARRAY_UNIQUE, "Array items are not unique (indices " + i + " and " + j + ")")).prefixWith(null, "uniqueItems");
+					var error = (this.createError(ErrorCodes.ARRAY_UNIQUE, {match1: i, match2: j})).prefixWith(null, "uniqueItems");
 					if (this.handleError(error)) {
 						return error;
 					}
@@ -6510,79 +7646,81 @@ ValidatorContext.prototype.validateArrayUniqueItems = function validateArrayUniq
 		}
 	}
 	return null;
-}
+};
 
-ValidatorContext.prototype.validateArrayItems = function validateArrayItems(data, schema) {
-	if (schema.items == undefined) {
+ValidatorContext.prototype.validateArrayItems = function validateArrayItems(data, schema, dataPointerPath) {
+	if (schema.items === undefined) {
 		return null;
 	}
-	var error;
+	var error, i;
 	if (Array.isArray(schema.items)) {
-		for (var i = 0; i < data.length; i++) {
+		for (i = 0; i < data.length; i++) {
 			if (i < schema.items.length) {
-				if (error = this.validateAll(data[i], schema.items[i], [i], ["items", i])) {
+				if (error = this.validateAll(data[i], schema.items[i], [i], ["items", i], dataPointerPath + "/" + i)) {
 					return error;
 				}
-			} else if (schema.additionalItems != undefined) {
-				if (typeof schema.additionalItems == "boolean") {
+			} else if (schema.additionalItems !== undefined) {
+				if (typeof schema.additionalItems === "boolean") {
 					if (!schema.additionalItems) {
-						error = (new ValidationError(ErrorCodes.ARRAY_ADDITIONAL_ITEMS, "Additional items not allowed")).prefixWith("" + i, "additionalItems");
+						error = (this.createError(ErrorCodes.ARRAY_ADDITIONAL_ITEMS, {})).prefixWith("" + i, "additionalItems");
 						if (this.handleError(error)) {
 							return error;
 						}
 					}
-				} else if (error = this.validateAll(data[i], schema.additionalItems, [i], ["additionalItems"])) {
+				} else if (error = this.validateAll(data[i], schema.additionalItems, [i], ["additionalItems"], dataPointerPath + "/" + i)) {
 					return error;
 				}
 			}
 		}
 	} else {
-		for (var i = 0; i < data.length; i++) {
-			if (error = this.validateAll(data[i], schema.items, [i], ["items"])) {
+		for (i = 0; i < data.length; i++) {
+			if (error = this.validateAll(data[i], schema.items, [i], ["items"], dataPointerPath + "/" + i)) {
 				return error;
 			}
 		}
 	}
 	return null;
-}
-ValidatorContext.prototype.validateObject = function validateObject(data, schema) {
-	if (typeof data != "object" || data == null || Array.isArray(data)) {
+};
+
+ValidatorContext.prototype.validateObject = function validateObject(data, schema, dataPointerPath) {
+	if (typeof data !== "object" || data === null || Array.isArray(data)) {
 		return null;
 	}
-	return this.validateObjectMinMaxProperties(data, schema)
-		|| this.validateObjectRequiredProperties(data, schema)
-		|| this.validateObjectProperties(data, schema)
-		|| this.validateObjectDependencies(data, schema)
+	return this.validateObjectMinMaxProperties(data, schema, dataPointerPath)
+		|| this.validateObjectRequiredProperties(data, schema, dataPointerPath)
+		|| this.validateObjectProperties(data, schema, dataPointerPath)
+		|| this.validateObjectDependencies(data, schema, dataPointerPath)
 		|| null;
-}
+};
 
 ValidatorContext.prototype.validateObjectMinMaxProperties = function validateObjectMinMaxProperties(data, schema) {
 	var keys = Object.keys(data);
-	if (schema.minProperties != undefined) {
+	var error;
+	if (schema.minProperties !== undefined) {
 		if (keys.length < schema.minProperties) {
-			var error = new ValidationError(ErrorCodes.OBJECT_PROPERTIES_MINIMUM, "Too few properties defined (" + keys.length + "), minimum " + schema.minProperties).prefixWith(null, "minProperties");
+			error = this.createError(ErrorCodes.OBJECT_PROPERTIES_MINIMUM, {propertyCount: keys.length, minimum: schema.minProperties}).prefixWith(null, "minProperties");
 			if (this.handleError(error)) {
 				return error;
 			}
 		}
 	}
-	if (schema.maxProperties != undefined) {
+	if (schema.maxProperties !== undefined) {
 		if (keys.length > schema.maxProperties) {
-			var error = new ValidationError(ErrorCodes.OBJECT_PROPERTIES_MAXIMUM, "Too many properties defined (" + keys.length + "), maximum " + schema.maxProperties).prefixWith(null, "maxProperties");
+			error = this.createError(ErrorCodes.OBJECT_PROPERTIES_MAXIMUM, {propertyCount: keys.length, maximum: schema.maxProperties}).prefixWith(null, "maxProperties");
 			if (this.handleError(error)) {
 				return error;
 			}
 		}
 	}
 	return null;
-}
+};
 
 ValidatorContext.prototype.validateObjectRequiredProperties = function validateObjectRequiredProperties(data, schema) {
-	if (schema.required != undefined) {
+	if (schema.required !== undefined) {
 		for (var i = 0; i < schema.required.length; i++) {
 			var key = schema.required[i];
 			if (data[key] === undefined) {
-				var error = new ValidationError(ErrorCodes.OBJECT_REQUIRED, "Missing required property: " + key).prefixWith(null, "" + i).prefixWith(null, "required");
+				var error = this.createError(ErrorCodes.OBJECT_REQUIRED, {key: key}).prefixWith(null, "" + i).prefixWith(null, "required");
 				if (this.handleError(error)) {
 					return error;
 				}
@@ -6590,56 +7728,68 @@ ValidatorContext.prototype.validateObjectRequiredProperties = function validateO
 		}
 	}
 	return null;
-}
+};
 
-ValidatorContext.prototype.validateObjectProperties = function validateObjectProperties(data, schema) {
+ValidatorContext.prototype.validateObjectProperties = function validateObjectProperties(data, schema, dataPointerPath) {
 	var error;
 	for (var key in data) {
+		var keyPointerPath = dataPointerPath + "/" + key.replace(/~/g, '~0').replace(/\//g, '~1');
 		var foundMatch = false;
-		if (schema.properties != undefined && schema.properties[key] != undefined) {
+		if (schema.properties !== undefined && schema.properties[key] !== undefined) {
 			foundMatch = true;
-			if (error = this.validateAll(data[key], schema.properties[key], [key], ["properties", key])) {
+			if (error = this.validateAll(data[key], schema.properties[key], [key], ["properties", key], keyPointerPath)) {
 				return error;
 			}
 		}
-		if (schema.patternProperties != undefined) {
+		if (schema.patternProperties !== undefined) {
 			for (var patternKey in schema.patternProperties) {
 				var regexp = new RegExp(patternKey);
 				if (regexp.test(key)) {
 					foundMatch = true;
-					if (error = this.validateAll(data[key], schema.patternProperties[patternKey], [key], ["patternProperties", patternKey])) {
+					if (error = this.validateAll(data[key], schema.patternProperties[patternKey], [key], ["patternProperties", patternKey], keyPointerPath)) {
 						return error;
 					}
 				}
 			}
 		}
-		if (!foundMatch && schema.additionalProperties != undefined) {
-			if (typeof schema.additionalProperties == "boolean") {
-				if (!schema.additionalProperties) {
-					error = new ValidationError(ErrorCodes.OBJECT_ADDITIONAL_PROPERTIES, "Additional properties not allowed").prefixWith(key, "additionalProperties");
-					if (this.handleError(error)) {
+		if (!foundMatch) {
+			if (schema.additionalProperties !== undefined) {
+				if (this.trackUnknownProperties) {
+					this.knownPropertyPaths[keyPointerPath] = true;
+					delete this.unknownPropertyPaths[keyPointerPath];
+				}
+				if (typeof schema.additionalProperties === "boolean") {
+					if (!schema.additionalProperties) {
+						error = this.createError(ErrorCodes.OBJECT_ADDITIONAL_PROPERTIES, {}).prefixWith(key, "additionalProperties");
+						if (this.handleError(error)) {
+							return error;
+						}
+					}
+				} else {
+					if (error = this.validateAll(data[key], schema.additionalProperties, [key], ["additionalProperties"], keyPointerPath)) {
 						return error;
 					}
 				}
-			} else {
-				if (error = this.validateAll(data[key], schema.additionalProperties, [key], ["additionalProperties"])) {
-					return error;
-				}
+			} else if (this.trackUnknownProperties && !this.knownPropertyPaths[keyPointerPath]) {
+				this.unknownPropertyPaths[keyPointerPath] = true;
 			}
+		} else if (this.trackUnknownProperties) {
+			this.knownPropertyPaths[keyPointerPath] = true;
+			delete this.unknownPropertyPaths[keyPointerPath];
 		}
 	}
 	return null;
-}
+};
 
-ValidatorContext.prototype.validateObjectDependencies = function validateObjectDependencies(data, schema) {
+ValidatorContext.prototype.validateObjectDependencies = function validateObjectDependencies(data, schema, dataPointerPath) {
 	var error;
-	if (schema.dependencies != undefined) {
+	if (schema.dependencies !== undefined) {
 		for (var depKey in schema.dependencies) {
 			if (data[depKey] !== undefined) {
 				var dep = schema.dependencies[depKey];
-				if (typeof dep == "string") {
+				if (typeof dep === "string") {
 					if (data[dep] === undefined) {
-						error = new ValidationError(ErrorCodes.OBJECT_DEPENDENCY_KEY, "Dependency failed - key must exist: " + dep).prefixWith(null, depKey).prefixWith(null, "dependencies");
+						error = this.createError(ErrorCodes.OBJECT_DEPENDENCY_KEY, {key: depKey, missing: dep}).prefixWith(null, depKey).prefixWith(null, "dependencies");
 						if (this.handleError(error)) {
 							return error;
 						}
@@ -6648,14 +7798,14 @@ ValidatorContext.prototype.validateObjectDependencies = function validateObjectD
 					for (var i = 0; i < dep.length; i++) {
 						var requiredKey = dep[i];
 						if (data[requiredKey] === undefined) {
-							error = new ValidationError(ErrorCodes.OBJECT_DEPENDENCY_KEY, "Dependency failed - key must exist: " + requiredKey).prefixWith(null, "" + i).prefixWith(null, depKey).prefixWith(null, "dependencies");
+							error = this.createError(ErrorCodes.OBJECT_DEPENDENCY_KEY, {key: depKey, missing: requiredKey}).prefixWith(null, "" + i).prefixWith(null, depKey).prefixWith(null, "dependencies");
 							if (this.handleError(error)) {
 								return error;
 							}
 						}
 					}
 				} else {
-					if (error = this.validateAll(data, dep, [], ["dependencies", depKey])) {
+					if (error = this.validateAll(data, dep, [], ["dependencies", depKey], dataPointerPath)) {
 						return error;
 					}
 				}
@@ -6663,103 +7813,196 @@ ValidatorContext.prototype.validateObjectDependencies = function validateObjectD
 		}
 	}
 	return null;
-}
+};
 
-ValidatorContext.prototype.validateCombinations = function validateCombinations(data, schema) {
-	var error;
-	return this.validateAllOf(data, schema)
-		|| this.validateAnyOf(data, schema)
-		|| this.validateOneOf(data, schema)
-		|| this.validateNot(data, schema)
+ValidatorContext.prototype.validateCombinations = function validateCombinations(data, schema, dataPointerPath) {
+	return this.validateAllOf(data, schema, dataPointerPath)
+		|| this.validateAnyOf(data, schema, dataPointerPath)
+		|| this.validateOneOf(data, schema, dataPointerPath)
+		|| this.validateNot(data, schema, dataPointerPath)
 		|| null;
-}
+};
 
-ValidatorContext.prototype.validateAllOf = function validateAllOf(data, schema) {
-	if (schema.allOf == undefined) {
+ValidatorContext.prototype.validateAllOf = function validateAllOf(data, schema, dataPointerPath) {
+	if (schema.allOf === undefined) {
 		return null;
 	}
 	var error;
 	for (var i = 0; i < schema.allOf.length; i++) {
 		var subSchema = schema.allOf[i];
-		if (error = this.validateAll(data, subSchema, [], ["allOf", i])) {
+		if (error = this.validateAll(data, subSchema, [], ["allOf", i], dataPointerPath)) {
 			return error;
 		}
 	}
 	return null;
-}
+};
 
-ValidatorContext.prototype.validateAnyOf = function validateAnyOf(data, schema) {
-	if (schema.anyOf == undefined) {
+ValidatorContext.prototype.validateAnyOf = function validateAnyOf(data, schema, dataPointerPath) {
+	if (schema.anyOf === undefined) {
 		return null;
 	}
 	var errors = [];
 	var startErrorCount = this.errors.length;
+	var oldUnknownPropertyPaths, oldKnownPropertyPaths;
+	if (this.trackUnknownProperties) {
+		oldUnknownPropertyPaths = this.unknownPropertyPaths;
+		oldKnownPropertyPaths = this.knownPropertyPaths;
+	}
+	var errorAtEnd = true;
 	for (var i = 0; i < schema.anyOf.length; i++) {
+		if (this.trackUnknownProperties) {
+			this.unknownPropertyPaths = {};
+			this.knownPropertyPaths = {};
+		}
 		var subSchema = schema.anyOf[i];
 
 		var errorCount = this.errors.length;
-		var error = this.validateAll(data, subSchema, [], ["anyOf", i]);
+		var error = this.validateAll(data, subSchema, [], ["anyOf", i], dataPointerPath);
 
-		if (error == null && errorCount == this.errors.length) {
+		if (error === null && errorCount === this.errors.length) {
 			this.errors = this.errors.slice(0, startErrorCount);
+
+			if (this.trackUnknownProperties) {
+				for (var knownKey in this.knownPropertyPaths) {
+					oldKnownPropertyPaths[knownKey] = true;
+					delete oldUnknownPropertyPaths[knownKey];
+				}
+				for (var unknownKey in this.unknownPropertyPaths) {
+					if (!oldKnownPropertyPaths[unknownKey]) {
+						oldUnknownPropertyPaths[unknownKey] = true;
+					}
+				}
+				// We need to continue looping so we catch all the property definitions, but we don't want to return an error
+				errorAtEnd = false;
+				continue;
+			}
+
 			return null;
 		}
 		if (error) {
 			errors.push(error.prefixWith(null, "" + i).prefixWith(null, "anyOf"));
 		}
 	}
-	errors = errors.concat(this.errors.slice(startErrorCount));
-	this.errors = this.errors.slice(0, startErrorCount);
-	return new ValidationError(ErrorCodes.ANY_OF_MISSING, "Data does not match any schemas from \"anyOf\"", "", "/anyOf", errors);
-}
+	if (this.trackUnknownProperties) {
+		this.unknownPropertyPaths = oldUnknownPropertyPaths;
+		this.knownPropertyPaths = oldKnownPropertyPaths;
+	}
+	if (errorAtEnd) {
+		errors = errors.concat(this.errors.slice(startErrorCount));
+		this.errors = this.errors.slice(0, startErrorCount);
+		return this.createError(ErrorCodes.ANY_OF_MISSING, {}, "", "/anyOf", errors);
+	}
+};
 
-ValidatorContext.prototype.validateOneOf = function validateOneOf(data, schema) {
-	if (schema.oneOf == undefined) {
+ValidatorContext.prototype.validateOneOf = function validateOneOf(data, schema, dataPointerPath) {
+	if (schema.oneOf === undefined) {
 		return null;
 	}
 	var validIndex = null;
 	var errors = [];
 	var startErrorCount = this.errors.length;
+	var oldUnknownPropertyPaths, oldKnownPropertyPaths;
+	if (this.trackUnknownProperties) {
+		oldUnknownPropertyPaths = this.unknownPropertyPaths;
+		oldKnownPropertyPaths = this.knownPropertyPaths;
+	}
 	for (var i = 0; i < schema.oneOf.length; i++) {
+		if (this.trackUnknownProperties) {
+			this.unknownPropertyPaths = {};
+			this.knownPropertyPaths = {};
+		}
 		var subSchema = schema.oneOf[i];
-		
+
 		var errorCount = this.errors.length;
-		var error = this.validateAll(data, subSchema, [], ["oneOf", i]);
-		
-		if (error == null && errorCount == this.errors.length) {
-			if (validIndex == null) {
+		var error = this.validateAll(data, subSchema, [], ["oneOf", i], dataPointerPath);
+
+		if (error === null && errorCount === this.errors.length) {
+			if (validIndex === null) {
 				validIndex = i;
 			} else {
 				this.errors = this.errors.slice(0, startErrorCount);
-				return new ValidationError(ErrorCodes.ONE_OF_MULTIPLE, "Data is valid against more than one schema from \"oneOf\": indices " + validIndex + " and " + i, "", "/oneOf");
+				return this.createError(ErrorCodes.ONE_OF_MULTIPLE, {index1: validIndex, index2: i}, "", "/oneOf");
+			}
+			if (this.trackUnknownProperties) {
+				for (var knownKey in this.knownPropertyPaths) {
+					oldKnownPropertyPaths[knownKey] = true;
+					delete oldUnknownPropertyPaths[knownKey];
+				}
+				for (var unknownKey in this.unknownPropertyPaths) {
+					if (!oldKnownPropertyPaths[unknownKey]) {
+						oldUnknownPropertyPaths[unknownKey] = true;
+					}
+				}
 			}
 		} else if (error) {
-			errors.push(error.prefixWith(null, "" + i).prefixWith(null, "oneOf"));
+			errors.push(error);
 		}
 	}
-	if (validIndex == null) {
+	if (this.trackUnknownProperties) {
+		this.unknownPropertyPaths = oldUnknownPropertyPaths;
+		this.knownPropertyPaths = oldKnownPropertyPaths;
+	}
+	if (validIndex === null) {
 		errors = errors.concat(this.errors.slice(startErrorCount));
 		this.errors = this.errors.slice(0, startErrorCount);
-		return new ValidationError(ErrorCodes.ONE_OF_MISSING, "Data does not match any schemas from \"oneOf\"", "", "/oneOf", errors);
+		return this.createError(ErrorCodes.ONE_OF_MISSING, {}, "", "/oneOf", errors);
 	} else {
 		this.errors = this.errors.slice(0, startErrorCount);
 	}
 	return null;
-}
+};
 
-ValidatorContext.prototype.validateNot = function validateNot(data, schema) {
-	if (schema.not == undefined) {
+ValidatorContext.prototype.validateNot = function validateNot(data, schema, dataPointerPath) {
+	if (schema.not === undefined) {
 		return null;
 	}
 	var oldErrorCount = this.errors.length;
-	var error = this.validateAll(data, schema.not);
+	var oldUnknownPropertyPaths, oldKnownPropertyPaths;
+	if (this.trackUnknownProperties) {
+		oldUnknownPropertyPaths = this.unknownPropertyPaths;
+		oldKnownPropertyPaths = this.knownPropertyPaths;
+		this.unknownPropertyPaths = {};
+		this.knownPropertyPaths = {};
+	}
+	var error = this.validateAll(data, schema.not, null, null, dataPointerPath);
 	var notErrors = this.errors.slice(oldErrorCount);
 	this.errors = this.errors.slice(0, oldErrorCount);
-	if (error == null && notErrors.length == 0) {
-		return new ValidationError(ErrorCodes.NOT_PASSED, "Data matches schema from \"not\"", "", "/not")
+	if (this.trackUnknownProperties) {
+		this.unknownPropertyPaths = oldUnknownPropertyPaths;
+		this.knownPropertyPaths = oldKnownPropertyPaths;
+	}
+	if (error === null && notErrors.length === 0) {
+		return this.createError(ErrorCodes.NOT_PASSED, {}, "", "/not");
 	}
 	return null;
-}
+};
+
+ValidatorContext.prototype.validateHypermedia = function validateCombinations(data, schema, dataPointerPath) {
+	if (!schema.links) {
+		return null;
+	}
+	var error;
+	for (var i = 0; i < schema.links.length; i++) {
+		var ldo = schema.links[i];
+		if (ldo.rel === "describedby") {
+			var template = new UriTemplate(ldo.href);
+			var allPresent = true;
+			for (var j = 0; j < template.varNames.length; j++) {
+				if (!(template.varNames[j] in data)) {
+					allPresent = false;
+					break;
+				}
+			}
+			if (allPresent) {
+				var schemaUrl = template.fillFromObject(data);
+				var subSchema = {"$ref": schemaUrl};
+				if (error = this.validateAll(data, subSchema, [], ["links", i], dataPointerPath)) {
+					return error;
+				}
+			}
+		}
+	}
+};
 
 // parseURI() and resolveUrl() are from https://gist.github.com/1088850
 //   -  released as public domain by author ("Yaffle") - see comments on gist
@@ -6807,23 +8050,27 @@ function resolveUrl(base, href) {// RFC 3986
 		href.hash;
 }
 
+function getDocumentUri(uri) {
+	return uri.split('#')[0];
+}
 function normSchema(schema, baseUri) {
-	if (baseUri == undefined) {
-		baseUri = schema.id;
-	} else if (typeof schema.id == "string") {
-		baseUri = resolveUrl(baseUri, schema.id);
-		schema.id = baseUri;
-	}
-	if (typeof schema == "object") {
+	if (schema && typeof schema === "object") {
+		if (baseUri === undefined) {
+			baseUri = schema.id;
+		} else if (typeof schema.id === "string") {
+			baseUri = resolveUrl(baseUri, schema.id);
+			schema.id = baseUri;
+		}
 		if (Array.isArray(schema)) {
 			for (var i = 0; i < schema.length; i++) {
 				normSchema(schema[i], baseUri);
 			}
-		} else if (typeof schema['$ref'] == "string") {
-			schema['$ref'] = resolveUrl(baseUri, schema['$ref']);
 		} else {
+			if (typeof schema['$ref'] === "string") {
+				schema['$ref'] = resolveUrl(baseUri, schema['$ref']);
+			}
 			for (var key in schema) {
-				if (key != "enum") {
+				if (key !== "enum") {
 					normSchema(schema[key], baseUri);
 				}
 			}
@@ -6844,6 +8091,7 @@ var ErrorCodes = {
 	NUMBER_MINIMUM_EXCLUSIVE: 102,
 	NUMBER_MAXIMUM: 103,
 	NUMBER_MAXIMUM_EXCLUSIVE: 104,
+	NUMBER_NOT_A_NUMBER: 105,
 	// String errors
 	STRING_LENGTH_SHORT: 200,
 	STRING_LENGTH_LONG: 201,
@@ -6858,112 +8106,269 @@ var ErrorCodes = {
 	ARRAY_LENGTH_SHORT: 400,
 	ARRAY_LENGTH_LONG: 401,
 	ARRAY_UNIQUE: 402,
-	ARRAY_ADDITIONAL_ITEMS: 403
+	ARRAY_ADDITIONAL_ITEMS: 403,
+	// Custom/user-defined errors
+	FORMAT_CUSTOM: 500,
+	KEYWORD_CUSTOM: 501,
+	// Schema structure
+	CIRCULAR_REFERENCE: 600,
+	// Non-standard validation options
+	UNKNOWN_PROPERTY: 1000
+};
+var ErrorCodeLookup = {};
+for (var key in ErrorCodes) {
+	ErrorCodeLookup[ErrorCodes[key]] = key;
+}
+var ErrorMessagesDefault = {
+	INVALID_TYPE: "Invalid type: {type} (expected {expected})",
+	ENUM_MISMATCH: "No enum match for: {value}",
+	ANY_OF_MISSING: "Data does not match any schemas from \"anyOf\"",
+	ONE_OF_MISSING: "Data does not match any schemas from \"oneOf\"",
+	ONE_OF_MULTIPLE: "Data is valid against more than one schema from \"oneOf\": indices {index1} and {index2}",
+	NOT_PASSED: "Data matches schema from \"not\"",
+	// Numeric errors
+	NUMBER_MULTIPLE_OF: "Value {value} is not a multiple of {multipleOf}",
+	NUMBER_MINIMUM: "Value {value} is less than minimum {minimum}",
+	NUMBER_MINIMUM_EXCLUSIVE: "Value {value} is equal to exclusive minimum {minimum}",
+	NUMBER_MAXIMUM: "Value {value} is greater than maximum {maximum}",
+	NUMBER_MAXIMUM_EXCLUSIVE: "Value {value} is equal to exclusive maximum {maximum}",
+	NUMBER_NOT_A_NUMBER: "Value {value} is not a valid number",
+	// String errors
+	STRING_LENGTH_SHORT: "String is too short ({length} chars), minimum {minimum}",
+	STRING_LENGTH_LONG: "String is too long ({length} chars), maximum {maximum}",
+	STRING_PATTERN: "String does not match pattern: {pattern}",
+	// Object errors
+	OBJECT_PROPERTIES_MINIMUM: "Too few properties defined ({propertyCount}), minimum {minimum}",
+	OBJECT_PROPERTIES_MAXIMUM: "Too many properties defined ({propertyCount}), maximum {maximum}",
+	OBJECT_REQUIRED: "Missing required property: {key}",
+	OBJECT_ADDITIONAL_PROPERTIES: "Additional properties not allowed",
+	OBJECT_DEPENDENCY_KEY: "Dependency failed - key must exist: {missing} (due to key: {key})",
+	// Array errors
+	ARRAY_LENGTH_SHORT: "Array is too short ({length}), minimum {minimum}",
+	ARRAY_LENGTH_LONG: "Array is too long ({length}), maximum {maximum}",
+	ARRAY_UNIQUE: "Array items are not unique (indices {match1} and {match2})",
+	ARRAY_ADDITIONAL_ITEMS: "Additional items not allowed",
+	// Format errors
+	FORMAT_CUSTOM: "Format validation failed ({message})",
+	KEYWORD_CUSTOM: "Keyword failed: {key} ({message})",
+	// Schema structure
+	CIRCULAR_REFERENCE: "Circular $refs: {urls}",
+	// Non-standard validation options
+	UNKNOWN_PROPERTY: "Unknown property (not in schema)"
 };
 
-function ValidationError(code, message, dataPath, schemaPath, subErrors) {
-	if (code == undefined) {
+function ValidationError(code, message, params, dataPath, schemaPath, subErrors) {
+	Error.call(this);
+	if (code === undefined) {
 		throw new Error ("No code supplied for error: "+ message);
 	}
-	this.code = code;
 	this.message = message;
-	this.dataPath = dataPath ? dataPath : "";
-	this.schemaPath = schemaPath ? schemaPath : "";
-	this.subErrors = subErrors ? subErrors : null;
-}
-ValidationError.prototype = {
-	prefixWith: function (dataPrefix, schemaPrefix) {
-		if (dataPrefix != null) {
-			dataPrefix = dataPrefix.replace("~", "~0").replace("/", "~1");
-			this.dataPath = "/" + dataPrefix + this.dataPath;
+	this.params = params;
+	this.code = code;
+	this.dataPath = dataPath || "";
+	this.schemaPath = schemaPath || "";
+	this.subErrors = subErrors || null;
+
+	var err = new Error(this.message);
+	this.stack = err.stack || err.stacktrace;
+	if (!this.stack) {
+		try {
+			throw err;
 		}
-		if (schemaPrefix != null) {
-			schemaPrefix = schemaPrefix.replace("~", "~0").replace("/", "~1");
-			this.schemaPath = "/" + schemaPrefix + this.schemaPath;
+		catch(err) {
+			this.stack = err.stack || err.stacktrace;
 		}
-		if (this.subErrors != null) {
-			for (var i = 0; i < this.subErrors.length; i++) {
-				this.subErrors[i].prefixWith(dataPrefix, schemaPrefix);
-			}
-		}
-		return this;
 	}
+}
+ValidationError.prototype = Object.create(Error.prototype);
+ValidationError.prototype.constructor = ValidationError;
+ValidationError.prototype.name = 'ValidationError';
+
+ValidationError.prototype.prefixWith = function (dataPrefix, schemaPrefix) {
+	if (dataPrefix !== null) {
+		dataPrefix = dataPrefix.replace(/~/g, "~0").replace(/\//g, "~1");
+		this.dataPath = "/" + dataPrefix + this.dataPath;
+	}
+	if (schemaPrefix !== null) {
+		schemaPrefix = schemaPrefix.replace(/~/g, "~0").replace(/\//g, "~1");
+		this.schemaPath = "/" + schemaPrefix + this.schemaPath;
+	}
+	if (this.subErrors !== null) {
+		for (var i = 0; i < this.subErrors.length; i++) {
+			this.subErrors[i].prefixWith(dataPrefix, schemaPrefix);
+		}
+	}
+	return this;
 };
 
-function searchForTrustedSchemas(map, schema, url) {
-	if (typeof schema.id == "string") {
-		if (schema.id.substring(0, url.length) == url) {
-			var remainder = schema.id.substring(url.length);
-			if ((url.length > 0 && url.charAt(url.length - 1) == "/")
-				|| remainder.charAt(0) == "#"
-				|| remainder.charAt(0) == "?") {
-				if (map[schema.id] == undefined) {
-					map[schema.id] = schema;
+function isTrustedUrl(baseUrl, testUrl) {
+	if(testUrl.substring(0, baseUrl.length) === baseUrl){
+		var remainder = testUrl.substring(baseUrl.length);
+		if ((testUrl.length > 0 && testUrl.charAt(baseUrl.length - 1) === "/")
+			|| remainder.charAt(0) === "#"
+			|| remainder.charAt(0) === "?") {
+			return true;
+		}
+	}
+	return false;
+}
+
+var languages = {};
+function createApi(language) {
+	var globalContext = new ValidatorContext();
+	var currentLanguage = language || 'en';
+	var api = {
+		addFormat: function () {
+			globalContext.addFormat.apply(globalContext, arguments);
+		},
+		language: function (code) {
+			if (!code) {
+				return currentLanguage;
+			}
+			if (!languages[code]) {
+				code = code.split('-')[0]; // fall back to base language
+			}
+			if (languages[code]) {
+				currentLanguage = code;
+				return code; // so you can tell if fall-back has happened
+			}
+			return false;
+		},
+		addLanguage: function (code, messageMap) {
+			var key;
+			for (key in ErrorCodes) {
+				if (messageMap[key] && !messageMap[ErrorCodes[key]]) {
+					messageMap[ErrorCodes[key]] = messageMap[key];
 				}
 			}
-		}
-	}
-	if (typeof schema == "object") {
-		for (var key in schema) {
-			if (key != "enum" && typeof schema[key] == "object") {
-				searchForTrustedSchemas(map, schema[key], url);
+			var rootCode = code.split('-')[0];
+			if (!languages[rootCode]) { // use for base language if not yet defined
+				languages[code] = messageMap;
+				languages[rootCode] = messageMap;
+			} else {
+				languages[code] = Object.create(languages[rootCode]);
+				for (key in messageMap) {
+					if (typeof languages[rootCode][key] === 'undefined') {
+						languages[rootCode][key] = messageMap[key];
+					}
+					languages[code][key] = messageMap[key];
+				}
 			}
-		}
-	}
-	return map;
+			return this;
+		},
+		freshApi: function (language) {
+			var result = createApi();
+			if (language) {
+				result.language(language);
+			}
+			return result;
+		},
+		validate: function (data, schema, checkRecursive, banUnknownProperties) {
+			var context = new ValidatorContext(globalContext, false, languages[currentLanguage], checkRecursive, banUnknownProperties);
+			if (typeof schema === "string") {
+				schema = {"$ref": schema};
+			}
+			context.addSchema("", schema);
+			var error = context.validateAll(data, schema, null, null, "");
+			if (!error && banUnknownProperties) {
+				error = context.banUnknownProperties();
+			}
+			this.error = error;
+			this.missing = context.missing;
+			this.valid = (error === null);
+			return this.valid;
+		},
+		validateResult: function () {
+			var result = {};
+			this.validate.apply(result, arguments);
+			return result;
+		},
+		validateMultiple: function (data, schema, checkRecursive, banUnknownProperties) {
+			var context = new ValidatorContext(globalContext, true, languages[currentLanguage], checkRecursive, banUnknownProperties);
+			if (typeof schema === "string") {
+				schema = {"$ref": schema};
+			}
+			context.addSchema("", schema);
+			context.validateAll(data, schema, null, null, "");
+			if (banUnknownProperties) {
+				context.banUnknownProperties();
+			}
+			var result = {};
+			result.errors = context.errors;
+			result.missing = context.missing;
+			result.valid = (result.errors.length === 0);
+			return result;
+		},
+		addSchema: function () {
+			return globalContext.addSchema.apply(globalContext, arguments);
+		},
+		getSchema: function () {
+			return globalContext.getSchema.apply(globalContext, arguments);
+		},
+		getSchemaMap: function () {
+			return globalContext.getSchemaMap.apply(globalContext, arguments);
+		},
+		getSchemaUris: function () {
+			return globalContext.getSchemaUris.apply(globalContext, arguments);
+		},
+		getMissingUris: function () {
+			return globalContext.getMissingUris.apply(globalContext, arguments);
+		},
+		dropSchemas: function () {
+			globalContext.dropSchemas.apply(globalContext, arguments);
+		},
+		defineKeyword: function () {
+			globalContext.defineKeyword.apply(globalContext, arguments);
+		},
+		defineError: function (codeName, codeNumber, defaultMessage) {
+			if (typeof codeName !== 'string' || !/^[A-Z]+(_[A-Z]+)*$/.test(codeName)) {
+				throw new Error('Code name must be a string in UPPER_CASE_WITH_UNDERSCORES');
+			}
+			if (typeof codeNumber !== 'number' || codeNumber%1 !== 0 || codeNumber < 10000) {
+				throw new Error('Code number must be an integer > 10000');
+			}
+			if (typeof ErrorCodes[codeName] !== 'undefined') {
+				throw new Error('Error already defined: ' + codeName + ' as ' + ErrorCodes[codeName]);
+			}
+			if (typeof ErrorCodeLookup[codeNumber] !== 'undefined') {
+				throw new Error('Error code already used: ' + ErrorCodeLookup[codeNumber] + ' as ' + codeNumber);
+			}
+			ErrorCodes[codeName] = codeNumber;
+			ErrorCodeLookup[codeNumber] = codeName;
+			ErrorMessagesDefault[codeName] = ErrorMessagesDefault[codeNumber] = defaultMessage;
+			for (var langCode in languages) {
+				var language = languages[langCode];
+				if (language[codeName]) {
+					language[codeNumber] = language[codeNumber] || language[codeName];
+				}
+			}
+		},
+		reset: function () {
+			globalContext.reset();
+			this.error = null;
+			this.missing = [];
+			this.valid = true;
+		},
+		missing: [],
+		error: null,
+		valid: true,
+		normSchema: normSchema,
+		resolveUrl: resolveUrl,
+		getDocumentUri: getDocumentUri,
+		errorCodes: ErrorCodes
+	};
+	return api;
 }
 
-var globalContext = new ValidatorContext();
+var tv4 = createApi();
+tv4.addLanguage('en-gb', ErrorMessagesDefault);
 
-var publicApi = {
-	validate: function (data, schema) {
-		var context = new ValidatorContext(globalContext);
-		if (typeof schema == "string") {
-			schema = {"$ref": schema};
-		}
-		var added = context.addSchema("", schema);
-		var error = context.validateAll(data, schema);
-		this.error = error;
-		this.missing = context.missing;
-		this.valid = (error == null);
-		return this.valid;
-	},
-	validateResult: function () {
-		var result = {};
-		this.validate.apply(result, arguments);
-		return result;
-	},
-	validateMultiple: function (data, schema) {
-		var context = new ValidatorContext(globalContext, true);
-		if (typeof schema == "string") {
-			schema = {"$ref": schema};
-		}
-		context.addSchema("", schema);
-		context.validateAll(data, schema);
-		var result = {};
-		result.errors = context.errors;
-		result.missing = context.missing;
-		result.valid = (result.errors.length == 0);
-		return result;
-	},
-	addSchema: function (url, schema) {
-		return globalContext.addSchema(url, schema);
-	},
-	getSchema: function (url) {
-		return globalContext.getSchema(url);
-	},
-	missing: [],
-	error: null,
-	normSchema: normSchema,
-	resolveUrl: resolveUrl,
-	errorCodes: ErrorCodes
-};
+//legacy property
+tv4.tv4 = tv4;
 
-global.tv4 = publicApi;
+return tv4; // used by _header.js to globalise.
 
-})(typeof(window) != 'undefined' ? window : global);
-
-
+}));
 
 /** FILE: lib/Math.uuid.js **/
 /*!
@@ -7719,6 +9124,7 @@ Math.uuid = function (len, radix) {
    **/
 
 })(typeof(window) !== 'undefined' ? window : global);
+
 
 /** FILE: src/baseclient/types.js **/
 (function(global) {
@@ -9645,6 +11051,7 @@ Math.uuid = function (len, radix) {
   };
 })();
 
+
 /** FILE: src/indexeddb.js **/
 (function (global) {
 
@@ -10542,10 +11949,10 @@ Math.uuid = function (len, radix) {
     connected: false,
     online: true,
 
-    configure: function (_x, _y, _z, token) { // parameter list compatible with WireClient
-      if (token) {
-        localStorage['remotestorage:googledrive:token'] = token;
-        this.token = token;
+    configure: function (settings) { // Settings parameter compatible with WireClient
+      if (settings.token) {
+        localStorage['remotestorage:googledrive:token'] = settings.token;
+        this.token = settings.token;
         this.connected = true;
         this._emit('connected');
       } else {
@@ -10881,77 +12288,80 @@ Math.uuid = function (len, radix) {
 
 })(this);
 
+
 /** FILE: src/dropbox.js **/
 (function (global) {
   var RS = RemoteStorage;
-  // next steps :
-  //  features:
-  // handle fetchDelta has_more
-  // handle files larger than 150MB
-  //
-  //  testing:
-  // add to remotestorage browser
-  // add to sharedy
-  // maybe write tests for remote
-  //
-
 
   /**
-   * Class: RemoteStorage.Dropbox
+   * File: Dropbox
    *
    * WORK IN PROGRESS, NOT RECOMMENDED FOR PRODUCTION USE
    *
    * Dropbox backend for RemoteStorage.js
-   * this file exposes a get/put/delete interface which is compatible with the wireclient
-   * it requires to get configured with a dropbox token similar to the wireclient.configure
+   * This file exposes a get/put/delete interface which is compatible with
+   * <RemoteStorage.WireClient>.
    *
-   * when the remotestorage.backend was set to 'dropbox' it will initialize and resets
-   * remoteStorage.remote with remoteStorage.dropbox
+   * When remoteStorage.backend is set to 'dropbox', this backend will
+   * initialize and replace remoteStorage.remote with remoteStorage.dropbox.
    *
-   * for compability with the public folder the getItemURL function of the BaseClient gets
-   * highjackt and returns the dropbox share-url
+   * In order to ensure compatibility with the public folder, <BaseClient.getItemURL>
+   * gets hijacked to return the DropBox public share URL.
    *
-   * to connect with dropbox a connect function is provided
+   * To use this backend, you need to specify the DropBox API key like so:
    *
-   * known issues :
-   *   files larger than 150mb are not suported for upload
-   *   folders with more than 10.000 files will cause problems to list
-   *   content-type is guessed by dropbox.com therefore they aren't fully supported
-   *   dropbox preserves cases but not case sensitive
-   *   share_urls and therfeor getItemURL is asynchronius , which means
-   *     getItemURL returns usefull values after the syncCycle
-   **/
+   * (start code)
+   *
+   * remoteStorage.setaApiKeys('dropbox', {
+   *   api_key: 'your-api-key'
+   * });
+   * 
+   * (end code)
+   *
+   * An API key can be obtained by registering your app at https://www.dropbox.com/developers/apps
+   *
+   * Known issues:
+   *
+   *   - Storing files larger than 150MB is not yet supported
+   *   - Listing and deleting folders with more than 10'000 files will cause problems
+   *   - Content-Type is not fully supported due to limitations of the DropBox API
+   *   - DropBox preserves cases but is not case-sensitive
+   *   - getItemURL is asynchronous which means getIetmURL returns useful values
+   *     after the syncCycle
+   */
+
   var hasLocalStorage;
   var AUTH_URL = 'https://www.dropbox.com/1/oauth2/authorize';
   var SETTINGS_KEY = 'remotestorage:dropbox';
   var cleanPath = RS.WireClient.cleanPath;
 
-  /*************************
-   * LowerCaseCache
-   * this Cache will lowercase its keys
-   * and can propagate the values to "upper folders"
+  /**
+   * class: LowerCaseCache
    *
-   * intialized with default Value(undefined will be accepted)
+   * A cache which automatically converts all keys to lower case and can
+   * propagate changes up to parent folders.
    *
-   * set and delete will be set to justSet and justDelete on initialization
+   * By default the set and delete methods are aliased to justSet and justDelete.
    *
-   * get : get a value or default Value
-   * set : set a value
-   * justSet : just set a value and don't propagate at all
-   * propagateSet : Set a value and propagate
-   * delete : delete
-   * justDelete : just delete a value and don't propagate at al
-   * propagateDelete : deleta a value and propagate
-   * _activatePropagation : replace set and delete with their propagate versions
-   *************************/
+   * Parameters:
+   *
+   *   defaultValue - the value that is returned for all keys that don't exist
+   *                  in the cache
+   */
   function LowerCaseCache(defaultValue){
-    this.defaultValue = defaultValue; //defaults to undefimned if initialized without arguments
+    this.defaultValue = defaultValue;
     this._storage = { };
     this.set = this.justSet;
     this.delete = this.justDelete;
   }
 
   LowerCaseCache.prototype = {
+    /**
+     * Method: get
+     *
+     * Get a value from the cache or defaultValue, if the key is not in the
+     * cache.
+     */
     get : function (key) {
       key = key.toLowerCase();
       var stored = this._storage[key];
@@ -10961,6 +12371,12 @@ Math.uuid = function (len, radix) {
       }
       return stored;
     },
+
+    /**
+     * Method: propagateSet
+     *
+     * Set a value and also update the parent folders with that value.
+     */
     propagateSet : function (key, value) {
       key = key.toLowerCase();
       if (this._storage[key] === value) {
@@ -10969,24 +12385,44 @@ Math.uuid = function (len, radix) {
       this._propagate(key, value);
       return this._storage[key] = value;
     },
+
+    /**
+     * Method: propagateDelete
+     *
+     * Delete a value and propagate the changes to the parent folders.
+     */
     propagateDelete : function (key) {
       key = key.toLowerCase();
       this._propagate(key, this._storage[key]);
       return delete this._storage[key];
     },
+
     _activatePropagation: function (){
       this.set = this.propagateSet;
       this.delete = this.propagateDelete;
       return true;
     },
+
+    /**
+     * Method: justSet
+     *
+     * Set a value without propagating.
+     */
     justSet : function (key, value) {
       key = key.toLowerCase();
       return this._storage[key] = value;
     },
+
+    /**
+     * Method: justDelete
+     *
+     * Delete a value without propagating.
+     */
     justDelete : function (key, value) {
       key = key.toLowerCase();
       return delete this._storage[key];
     },
+
     _propagate: function (key, rev){
       var folders = key.split('/').slice(0,-1);
       var path = '';
@@ -11001,23 +12437,11 @@ Math.uuid = function (len, radix) {
     }
   };
 
-  /****************************
-   * Dropbox - Backend for remtoeStorage.js
-   * methods :
-   * connect
-   * configure
-   * get
-   * put
-   * delete
-   * share
-   * info
-   * Properties :
-   * connected
-   * rs
-   * token
-   * userAddress
-   *****************************/
   var onErrorCb;
+
+  /**
+   * Class: RemoteStorage.Dropbox
+   */
   RS.Dropbox = function (rs) {
 
     this.rs = rs;
@@ -11027,7 +12451,14 @@ Math.uuid = function (len, radix) {
 
     onErrorCb = function (error){
       if (error instanceof RemoteStorage.Unauthorized) {
-        self.configure(null,null,null,null);
+        // Delete all the settings - see the documentation of wireclient.configure
+        self.configure({
+          userAddress: null,
+          href: null,
+          storageApi: null,
+          token: null,
+          options: null
+        });
       }
     };
 
@@ -11045,7 +12476,7 @@ Math.uuid = function (len, radix) {
         settings = JSON.parse(localStorage[SETTINGS_KEY]);
       } catch(e){}
       if (settings) {
-        this.configure(settings.userAddress, undefined, undefined, settings.token);
+        this.configure(settings);
       }
       try {
         this._itemRefs = JSON.parse(localStorage[ SETTINGS_KEY+':shares' ]);
@@ -11060,13 +12491,13 @@ Math.uuid = function (len, radix) {
     online: true,
 
     /**
-     * Method : connect()
-     *   redirects to AUTH_URL(https://www.dropbox.com/1/oauth2/authorize)
-     *   and set's backend to dropbox
-     *   therefor it starts the auth flow and end's up with a token and the dropbox backend in place
-     **/
+     * Method: connect
+     *
+     * Set the backed to 'dropbox' and start the authentication flow in order
+     * to obtain an API token from DropBox.
+     */
     connect: function () {
-      //ToDo handling when token is already present
+      // TODO handling when token is already present
       this.rs.setBackend('dropbox');
       if (this.token){
         hookIt(this.rs);
@@ -11074,33 +12505,43 @@ Math.uuid = function (len, radix) {
         RS.Authorize(AUTH_URL, '', String(RS.Authorize.getLocation()), this.clientId);
       }
     },
+
     /**
-     * Method : configure(userAdress, x, x, token)
-     *   accepts its parameters according to the wireClient
-     *   set's the connected flag
+     * Method : configure(settings)
+     * Accepts its parameters according to the <RemoteStorage.WireClient>.
+     * Sets the connected flag
      **/
-    configure: function (userAddress, href, storageApi, token) {
-      if (typeof token !== 'undefined') { this.token = token; }
-      if (typeof userAddress !== 'undefined') { this.userAddress = userAddress; }
+    configure: function (settings) {
+      // We only update this.userAddress if settings.userAddress is set to a string or to null:
+      if (typeof settings.userAddress !== 'undefined') { this.userAddress = settings.userAddress; }
+      // Same for this.token. If only one of these two is set, we leave the other one at its existing value:
+      if (typeof settings.token !== 'undefined') { this.token = settings.token; }
 
       if (this.token) {
         this.connected = true;
         if ( !this.userAddress ){
           this.info().then(function (info){
             this.userAddress = info.display_name;
-            //FIXME propagate this to the view
+            this.rs.widget.view.setUserAddress(this.userAddress);
+            this._emit('connected');
           }.bind(this));
         }
-        this._emit('connected');
       } else {
         this.connected = false;
       }
       if (hasLocalStorage){
-        localStorage[SETTINGS_KEY] = JSON.stringify( { token: this.token,
-                                                       userAddress: this.userAddress } );
+        localStorage[SETTINGS_KEY] = JSON.stringify({
+          userAddress: this.userAddress,
+          token: this.token
+        });
       }
     },
 
+    /**
+     * Method: stopWaitingForToken
+     *
+     * Stop waiting for the token and emit not-connected
+     */
     stopWaitingForToken: function () {
       if (!this.connected) {
         this._emit('not-connected');
@@ -11108,11 +12549,25 @@ Math.uuid = function (len, radix) {
     },
 
     /**
-     * Method : _getFolder(path, options)
-     **/
+     * Method: _getFolder
+     *
+     * Get all items in a folder.
+     *
+     * Parameters:
+     *
+     *   path - path of the folder to get, with leading slash
+     *   options - not used
+     *
+     * Returns:
+     *
+     *  statusCode - HTTP status code
+     *  body - array of the items found
+     *  contentType - 'application/json; charset=UTF-8'
+     *  revision - revision of the folder
+     */
     _getFolder: function (path, options) {
       // FIXME simplify promise handling
-      var url = 'https://api.dropbox.com/1/metadata/auto'+path;
+      var url = 'https://api.dropbox.com/1/metadata/auto' + cleanPath(path);
       var revCache = this._revCache;
       var self = this;
 
@@ -11145,56 +12600,70 @@ Math.uuid = function (len, radix) {
     },
 
     /**
-     * Method : get(path, options)
-     *   get compatible with wireclient
-     *   checks for path in _revCache and decides based on that if file has changed
-     *   calls _getFolder if file is a folder
-     *   calls share(path) afterwards to fill the _hrefCache
-     **/
+     * Method: get
+     *
+     * Compatible with <RemoteStorage.WireClient.get>
+     *
+     * Checks for the path in _revCache and decides based on that if file has
+     * changed. Calls _getFolder is the path points to a folder.
+     *
+     * Calls <RemoteStorage.Dropbox.share> afterwards to fill _itemRefs.
+     */
     get: function (path, options) {
-      // FIXME simplify promise handling
       if (! this.connected) { return Promise.reject("not connected (path: " + path + ")"); }
-      path = cleanPath(path);
-      var url = 'https://api-content.dropbox.com/1/files/auto' + path;
-      var pending = this._sharePromise(path);
+      var url = 'https://api-content.dropbox.com/1/files/auto' + cleanPath(path);
       var self = this;
 
       var savedRev = this._revCache.get(path);
       if (savedRev === null) {
-        //file was deleted server side
-        pending.resolve({statusCode: 404});
+        // file was deleted server side
+        return Promise.resolve({statusCode: 404});
       }
       if (options && options.ifNoneMatch &&
          savedRev && (savedRev === options.ifNoneMatch)) {
         // nothing changed.
-        pending.resolve({statusCode: 304});
+        return Promise.resolve({statusCode: 304});
       }
 
       //use _getFolder for folders
       if (path.substr(-1) === '/') { return this._getFolder(path, options); }
-      this._request('GET', url, {}).then(function (resp) {
+
+      return this._request('GET', url, {}).then(function (resp) {
         var status = resp.status;
         var meta, body, mime, rev;
         if (status !== 200) {
-          return pending.resolve({statusCode: status});
+          return Promise.resolve({statusCode: status});
         }
+
         body = resp.responseText;
         try {
           meta = JSON.parse( resp.getResponseHeader('x-dropbox-metadata') );
         } catch(e) {
-          return pending.reject(e);
+          return Promise.reject(e);
         }
 
         mime = meta.mime_type; //resp.getResponseHeader('Content-Type');
         rev = meta.rev;
         self._revCache.set(path, rev);
+        self._shareIfNeeded(path); // The shared link expires every 4 hours
 
         // handling binary
-        if ((! resp.getResponseHeader('Content-Type') ) || resp.getResponseHeader('Content-Type').match(/charset=binary/)) {
-          return RS.WireClient.readBinaryData(resp.response, mime, function (result) {
-            return pending.resolve({statusCode: status, body: result, contentType: mime, revision: rev});
+        if (!resp.getResponseHeader('Content-Type') ||
+            resp.getResponseHeader('Content-Type').match(/charset=binary/)) {
+          var pending = Promise.defer();
+
+          RS.WireClient.readBinaryData(resp.response, mime, function (result) {
+            pending.resolve({
+              statusCode: status,
+              body: result,
+              contentType: mime,
+              revision: rev
+            });
           });
+
+          return pending.promise;
         }
+
         // handling json (always try)
         if (mime && mime.search('application/json') >= 0 || true) {
           try {
@@ -11204,31 +12673,30 @@ Math.uuid = function (len, radix) {
             //Failed parsing Json, assume it is something else then
           }
         }
-        return pending.resolve({statusCode: status, body: body, contentType: mime, revision: rev});
-      }, function (err) {
-        return pending.reject(err);
+
+        return Promise.resolve({statusCode: status, body: body, contentType: mime, revision: rev});
       });
-      return pending.promise;
     },
 
     /**
-     * Method : put(path, body, contentType, options)
-     *   put compatible with wireclient
-     *   also uses _revCache to check for version conflicts
-     *   also shares via share(path)
-     **/
-    put: function (path, body, contentType, options){
-      // FIXME simplify promise handling
-      if (! this.connected) { throw new Error("not connected (path: " + path + ")"); }
-      var pathTempBeforeClean = path; // Temp variable to store the value beafore cleanPath, to be used later
-      path = cleanPath(path);
-
+     * Method: put
+     *
+     * Compatible with <RemoteStorage.WireClient>
+     *
+     * Checks for the path in _revCache and decides based on that if file has
+     * changed.
+     *
+     * Calls <RemoteStorage.Dropbox.share> afterwards to fill _itemRefs.
+     */
+    put: function (path, body, contentType, options) {
       var self = this;
-      var pending = this._sharePromise(path);
-      var revCache = this._revCache;
+
+      if (!this.connected) {
+        throw new Error("not connected (path: " + path + ")");
+      }
 
       //check if file has changed and return 412
-      var savedRev = revCache.get(path);
+      var savedRev = this._revCache.get(path);
       if (options && options.ifMatch &&
           savedRev && (savedRev !== options.ifMatch)) {
         return Promise.resolve({statusCode: 412, revision: savedRev});
@@ -11237,172 +12705,151 @@ Math.uuid = function (len, radix) {
           savedRev && (savedRev !== 'rev')) {
         return Promise.resolve({statusCode: 412, revision: savedRev});
       }
-      if ((! contentType.match(/charset=/)) && (body instanceof ArrayBuffer || RS.WireClient.isArrayBufferView(body))) {
+
+      if ((!contentType.match(/charset=/)) &&
+          (body instanceof ArrayBuffer || RS.WireClient.isArrayBufferView(body))) {
         contentType += '; charset=binary';
       }
-      var url = 'https://api-content.dropbox.com/1/files_put/auto' + path + '?';
-      if (options && options.ifMatch) {
-        url += "parent_rev="+encodeURIComponent(options.ifMatch);
+
+      if (body.length > 150 * 1024 * 1024) {
+        //https://www.dropbox.com/developers/core/docs#chunked-upload
+        return Promise.reject(new Error("Cannot upload file larger than 150MB"));
       }
 
-      if (body.length > 150 * 1024 * 1024) { //FIXME actual content-length
-        //https://www.dropbox.com/developers/core/docs#chunked-upload
-        RemoteStorage.log('files larger than 150MB not supported yet');
-      } else {
-        // FIXME simplify promise handling
-        var pendingMetadata = Promise.defer();
-        if (options && (options.ifMatch || (options.ifNoneMatch === '*'))) {
-          this._getMetadata(pathTempBeforeClean).then(function (metadata) {
-            pendingMetadata.resolve(metadata);
-          });
-        } else {
-          pendingMetadata.resolve();
-        }
+      var result;
+      var needsMetadata = options && (options.ifMatch || (options.ifNoneMatch === '*'));
+      var uploadParams = {
+        body: body,
+        contentType: contentType,
+        path: path
+      };
 
-        pendingMetadata.promise.then(function (metadata) {
+      if (needsMetadata) {
+        result = this._getMetadata(path).then(function (metadata) {
           if (options && (options.ifNoneMatch === '*') && metadata) {
             // if !!metadata === true, the file exists
-            return pending.resolve({statusCode: 412, revision: metadata.rev});
+            return Promise.resolve({
+              statusCode: 412,
+              revision: metadata.rev
+            });
           }
+
           if (options && options.ifMatch && metadata && (metadata.rev !== options.ifMatch)) {
-            return pending.resolve({statusCode: 412, revision: metadata.rev});
+            return Promise.resolve({
+              statusCode: 412,
+              revision: metadata.rev
+            });
           }
-          self._request('PUT', url, {body:body, headers:{'Content-Type':contentType}}).then(function (resp) {
-            if (resp.status !== 200) {
-              return pending.resolve({statusCode: resp.status});
-            }
-            var response = JSON.parse(resp.responseText);
-            if (response.path === pathTempBeforeClean) {
-              revCache.propagateSet(path, response.rev);
-              pending.resolve({statusCode: resp.status});
-            } else {
-              // Conflict happened. Delete the copy created by Dropbox
-              var deleteUrl = 'https://api.dropbox.com/1/fileops/delete?root=auto&path=' + encodeURIComponent(response.path);
-              self._request('POST', deleteUrl, {});
 
-              // If we got into this situation here, then it means that the
-              // file changed between the metadata request and this PUT
-              // request. Because of that the previously requested metadata
-              // cannot be reused here and a new request has to be made:
-              self._getMetadata(path).then(function (metadata) {
-                pending.resolve({statusCode: 412, revision: metadata.rev});
-              });
-            }
-          }, function (err) {
-            return pending.reject(err);
-          });
-        });
-      }
-      return pending.promise;
-    },
-
-    /**
-     * Method : delete(path, options)
-     *   similar to get and set
-     **/
-    'delete': function (path, options){
-      // FIXME simplify promise handling
-      if (! this.connected) { throw new Error("not connected (path: " + path + ")"); }
-      var pathTempBeforeClean = path; // Temp variable to store the value before cleanPath, to be used later
-      path = cleanPath(path);
-
-      var self = this;
-      var pending = Promise.defer();
-      var revCache = this._revCache;
-      //check if file has changed and return 412
-      var savedRev = revCache.get(path);
-      if (options && options.ifMatch &&
-          savedRev && (options.ifMatch !== savedRev)) {
-        return Promise.resolve({statusCode: 412, revision: savedRev});
-      }
-
-      var pendingMetadata = Promise.defer();
-      if (options && options.ifMatch) {
-        this._getMetadata(pathTempBeforeClean).then(function (metadata) {
-          pendingMetadata.resolve(metadata);
+          return self._uploadSimple(uploadParams);
         });
       } else {
-        pendingMetadata.resolve();
+        result = self._uploadSimple(uploadParams);
       }
 
-      pendingMetadata.promise.then(function (metadata) {
-        if (options && options.ifMatch && metadata && (metadata.rev !== options.ifMatch)) {
-          return pending.resolve({statusCode: 412, revision: metadata.rev});
-        }
-
-        var url = 'https://api.dropbox.com/1/fileops/delete?root=auto&path=' + encodeURIComponent(pathTempBeforeClean);
-        self._request('POST', url, {}).then(function (resp){
-          if (resp.status === 200) {
-            revCache.delete(path);
-          }
-          return pending.resolve({statusCode: resp.status});
-        }, function (err) {
-          return pending.reject(error);
-        });
+      return result.then(function (ret) {
+        self._shareIfNeeded(path);
+        return ret;
       });
-
-      return pending.promise.then(function (r) {
-        delete this._itemRefs[path];
-        return r;
-      }.bind(this));
     },
 
     /**
-     * Method : _sharePromise(path)
-     *   returns a promise which's then block doesn't touch the arguments given
-     *   and calls share for the path
+     * Method: delete
      *
-     *  also checks for necessity of shareing this url(already in the itemRefs or not '/public/')
-     **/
-    _sharePromise: function (path){
-      var pending = Promise.defer();
+     * Compatible with <RemoteStorage.WireClient.delete>
+     *
+     * Checks for the path in _revCache and decides based on that if file has
+     * changed.
+     *
+     * Calls <RemoteStorage.Dropbox.share> afterwards to fill _itemRefs.
+     */
+    'delete': function (path, options) {
       var self = this;
-      if (path.match(/^\/public\/.*[^\/]$/) && typeof this._itemRefs[path] === 'undefined') {
-        pending.then(function (r) {
-          return self.share(path).then(function () {
-            return Promise.resolve(r);
-          }, function (err) {
-            return Promise.resolve(r);
-          });
+
+      if (!this.connected) {
+        throw new Error("not connected (path: " + path + ")");
+      }
+
+      //check if file has changed and return 412
+      var savedRev = this._revCache.get(path);
+      if (options && options.ifMatch && savedRev && (options.ifMatch !== savedRev)) {
+        return Promise.resolve({ statusCode: 412, revision: savedRev });
+      }
+
+      if (options && options.ifMatch) {
+        return this._getMetadata(path).then(function (metadata) {
+          if (options && options.ifMatch && metadata && (metadata.rev !== options.ifMatch)) {
+            return Promise.resolve({
+              statusCode: 412,
+              revision: metadata.rev
+            });
+          }
+
+          return self._deleteSimple(path);
         });
       }
-      return pending;
+
+      return self._deleteSimple(path);
     },
 
     /**
-     * Method : share(path)
-     *   get sher_url s from dropbox and pushes those into this._hrefCache
-     *   returns promise
+     * Method: _shareIfNeeded
+     *
+     * Calls share, if the provided path resides in a public folder.
      */
-    share: function (path){
-      var url = "https://api.dropbox.com/1/media/auto"+path;
-      var itemRefs = this._itemRefs;
+    _shareIfNeeded: function (path) {
+      if (path.match(/^\/public\/.*[^\/]$/) && this._itemRefs[path] === undefined) {
+        this.share(path);
+      }
+    },
 
-      // requesting shareing url
-      return this._request('POST', url, {}).then(function (resp) {
-        try{
-          var response = JSON.parse(resp.responseText);
-          var url = response.url;
-          itemRefs[path] = url;
-          if (hasLocalStorage) {
-            localStorage[SETTINGS_KEY+":shares"] = JSON.stringify(this._itemRefs);
-          }
-          return Promise.resolve(url);
-        } catch(err) {
-          err.message += "share error";
-          return Promise.reject(err);
+    /**
+     * Method: share
+     *
+     * Gets a publicly-accessible URL for the path from DropBox and stores it
+     * in _itemRefs.
+     *
+     * Returns:
+     *
+     *   A promise for the URL
+     */
+    share: function (path) {
+      var self = this;
+      var url = 'https://api.dropbox.com/1/media/auto/' + cleanPath(path);
+
+      return this._request('POST', url, {}).then(function (response) {
+        if (response.status !== 200) {
+          return Promise.reject(new Error('Invalid DropBox API response status when sharing "' + path + '":' + response.status));
         }
-      }, function (err) {
-        RemoteStorage.log(err);
-        err.message = 'Shareing Dropbox Thingie("' + path + '") failed.' + err.message;
-        return Promise.reject(err);
+
+        try {
+          response = JSON.parse(response.responseText);
+        } catch (e) {
+          return Promise.reject(new Error('Invalid DropBox API response when sharing "' + path + '": ' + response.responseText));
+        }
+
+        self._itemRefs[path] = response.url;
+
+        if (hasLocalStorage) {
+          localStorage[SETTINGS_KEY + ':shares'] = JSON.stringify(self._itemRefs);
+        }
+
+        return Promise.resolve(url);
+      }, function (error) {
+        err.message = 'Sharing DropBox file or folder ("' + path + '") failed.' + err.message;
+        return Promise.reject(error);
       });
     },
 
     /**
-     * Method : info()
-     *   fetching user info from Dropbox returns promise
-     **/
+     * Method: info
+     *
+     * Fetches the user's info from DropBox and returns a promise for it.
+     *
+     * Returns:
+     *
+     *   A promise to the user's info
+     */
     info: function () {
       var url = 'https://api.dropbox.com/1/account/info';
       // requesting user info(mainly for userAdress)
@@ -11416,6 +12863,21 @@ Math.uuid = function (len, radix) {
       });
     },
 
+    /**
+     * Method: _request
+     *
+     * Make a HTTP request.
+     *
+     * Options:
+     *
+     *   headers - an object containing the request headers
+     *
+     * Parameters:
+     *
+     *   method - the method to use
+     *   url - the URL to make the request to
+     *   options - see above
+     */
     _request: function (method, url, options) {
       var self = this;
       if (! options.headers) { options.headers = {}; }
@@ -11431,13 +12893,15 @@ Math.uuid = function (len, radix) {
     },
 
     /**
-    * method: fetchDelta
-    *
-    *   this method fetches the deltas from the dropbox api, used to sync the storage
-    *   here we retrive changes and put them into the _revCache, those values will then be used
-    *   to determin if something has changed.
-    **/
+     * Method: fetchDelta
+     *
+     * Fetches the revision of all the files from DropBox API and puts them
+     * into _revCache. These values can then be used to determine if something
+     * has changed.
+     */
     fetchDelta: function () {
+      // TODO: Handle `has_more`
+
       var args = Array.prototype.slice.call(arguments);
       var self = this;
       return self._request('POST', 'https://api.dropbox.com/1/delta', {
@@ -11508,6 +12972,25 @@ Math.uuid = function (len, radix) {
       });
     },
 
+    /**
+     * Method: _getMetadata
+     *
+     * Gets metadata for a path (can point to either a file or a folder).
+     *
+     * Options:
+     *
+     *   list - if path points to a folder, specifies whether to list the
+     *          metadata of the folder's children. False by default.
+     *
+     * Parameters:
+     *
+     *   path - the path to get metadata for
+     *   options - see above
+     *
+     * Returns:
+     *
+     *   A promise for the metadata
+     */
     _getMetadata: function (path, options) {
       var self = this;
       var cached = this._metadataCache[path];
@@ -11527,6 +13010,103 @@ Math.uuid = function (len, radix) {
           // The file doesn't exist
           return Promise.resolve();
         }
+      });
+    },
+
+    /**
+     * Method: _uploadSimple
+     *
+     * Upload a simple file (the size is no more than 150MB).
+     *
+     * Parameters:
+     *
+     *   ifMatch - same as for get
+     *   path - path of the file
+     *   body - contents of the file to upload
+     *   contentType - mime type of the file
+     *
+     * Returns:
+     *
+     *   statusCode - HTTP status code
+     *   revision - revision of the newly-created file, if any
+     */
+    _uploadSimple: function (params) {
+      var self = this;
+      var url = 'https://api-content.dropbox.com/1/files_put/auto' + cleanPath(params.path) + '?';
+
+      if (params && params.ifMatch) {
+        url += "parent_rev=" + encodeURIComponent(params.ifMatch);
+      }
+
+      return self._request('PUT', url, {
+        body: params.body,
+        headers: {
+          'Content-Type': params.contentType
+        }
+      }).then(function (resp) {
+        if (resp.status !== 200) {
+          return Promise.resolve({ statusCode: resp.status });
+        }
+
+        var response;
+
+        try {
+          response = JSON.parse(resp.responseText);
+        } catch (e) {
+          return Promise.reject(e);
+        }
+
+        // Conflict happened. Delete the copy created by DropBox
+        if (response.path != params.path) {
+          var deleteUrl = 'https://api.dropbox.com/1/fileops/delete?root=auto&path=' + encodeURIComponent(response.path);
+          self._request('POST', deleteUrl, {});
+
+          return self._getMetadata(params.path).then(function (metadata) {
+            return Promise.resolve({
+              statusCode: 412,
+              revision: metadata.rev
+            });
+          });
+        }
+
+        self._revCache.propagateSet(params.path, response.rev);
+        return Promise.resolve({ statusCode: resp.status });
+      });
+    },
+
+    /**
+     * Method: _deleteSimple
+     *
+     * Deletes a file or a folder. If the folder contains more than 10'000 items
+     * (recursively) then the operation may not complete successfully. If that
+     * is the case, an Error gets thrown.
+     *
+     * Parameters:
+     *
+     *   path - the path to delete
+     *
+     * Returns:
+     *
+     *   statusCode - HTTP status code
+     */
+    _deleteSimple: function (path) {
+      var self = this;
+      var url = 'https://api.dropbox.com/1/fileops/delete?root=auto&path=' + encodeURIComponent(path);
+
+      return self._request('POST', url, {}).then(function (resp) {
+        if (resp.status === 406) {
+          // Too many files would be involved in the operation for it to
+          // complete successfully.
+          // TODO: Handle this somehow
+          return Promise.reject(new Error("Cannot delete '" + path + "': too many files involved"));
+        }
+
+        if (resp.status === 200) {
+          self._revCache.delete(path);
+          delete self._itemRefs[path];
+        }
+
+        return Promise.resolve({ statusCode: resp.status });
       });
     }
   };
