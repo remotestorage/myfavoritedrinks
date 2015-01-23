@@ -1,4 +1,4 @@
-/** remotestorage.js 0.11.0, http://remotestorage.io, MIT-licensed **/
+/** remotestorage.js 0.11.1, http://remotestorage.io, MIT-licensed **/
 
 /** FILE: lib/bluebird.js **/
 /**
@@ -3271,25 +3271,23 @@ module.exports = ret;
 (2)
 });            ;if (typeof window !== 'undefined' && window !== null) {                           window.P = window.Promise;                                                 } else if (typeof self !== 'undefined' && self !== null) {                         self.P = self.Promise;                                                     }
 
-/** FILE: lib/bluebird-defer.js **/
-// wrapper to implement defer() functionality
-(function () {
+/** FILE: src/remotestorage.js **/
+(function (global) {
+
+  // wrapper to implement defer() functionality
   Promise.defer = function () {
     var resolve, reject;
     var promise = new Promise(function() {
-        resolve = arguments[0];
-        reject = arguments[1];
+      resolve = arguments[0];
+      reject = arguments[1];
     });
     return {
         resolve: resolve,
-        reject: reject,
-        promise: promise
+      reject: reject,
+      promise: promise
     };
   };
-}());
 
-/** FILE: src/remotestorage.js **/
-(function (global) {
   function logError(error) {
     if (typeof(error) === 'string') {
       console.error(error);
@@ -4037,11 +4035,11 @@ module.exports = ret;
     },
 
     _dispatchEvent: function (eventName, event) {
-      for (var path in this._pathHandlers[eventName]) {
+      var self = this;
+      Object.keys(this._pathHandlers[eventName]).forEach(function (path) {
         var pl = path.length;
-        var self = this;
         if (event.path.substr(0, pl) === path) {
-          this._pathHandlers[eventName][path].forEach(function (handler) {
+          self._pathHandlers[eventName][path].forEach(function (handler) {
             var ev = {};
             for (var key in event) { ev[key] = event[key]; }
             ev.relativePath = event.path.replace(new RegExp('^' + path), '');
@@ -4053,7 +4051,7 @@ module.exports = ret;
             }
           });
         }
-      }
+      });
     }
   };
 
@@ -4224,6 +4222,12 @@ module.exports = ret;
       }
     },
 
+    cleanPath: function (path) {
+      return path.replace(/\/+/g, '/')
+                 .split('/').map(encodeURIComponent).join('/')
+                 .replace(/'/g, '%27');
+    },
+
     bindAll: function (object) {
       for (var key in this) {
         if (typeof(object[key]) === 'function') {
@@ -4233,6 +4237,7 @@ module.exports = ret;
     },
 
     equal: function (a, b, seen) {
+      var key;
       seen = seen || [];
 
       if (typeof(a) !== typeof(b)) {
@@ -4268,14 +4273,14 @@ module.exports = ret;
         }
       } else {
         // Check that keys from a exist in b
-        for (var key in a) {
+        for (key in a) {
           if (a.hasOwnProperty(key) && !(key in b)) {
             return false;
           }
         }
 
         // Check that keys from b exist in a, and compare the values
-        for (var key in b) {
+        for (key in b) {
           if (!b.hasOwnProperty(key)) {
             continue;
           }
@@ -4333,6 +4338,7 @@ module.exports = ret;
       return paths;
     },
 
+    /* jshint ignore:start */
     md5sum: function(str) {
       //
       // http://www.myersdaily.org/joseph/javascript/md5.js
@@ -4485,20 +4491,21 @@ module.exports = ret;
         return hex(md51(s));
       }
 
-      function add32(a, b) {
+      var add32 = function (a, b) {
         return (a + b) & 0xFFFFFFFF;
-      }
+      };
 
       if (md5('hello') !== '5d41402abc4b2a76b9719d911017c592') {
-        function add32(x, y) {
+        add32 = function (x, y) {
           var lsw = (x & 0xFFFF) + (y & 0xFFFF),
               msw = (x >> 16) + (y >> 16) + (lsw >> 16);
           return (msw << 16) | (lsw & 0xFFFF);
-        }
+        };
       }
 
       return md5(str);
     }
+    /* jshint ignore:end */
   };
 
   if (!RemoteStorage.prototype.util) {
@@ -4697,6 +4704,7 @@ module.exports = ret;
   }
 
   var isFolder = RemoteStorage.util.isFolder;
+  var cleanPath = RemoteStorage.util.cleanPath;
 
   function addQuotes(str) {
     if (typeof(str) !== 'string') {
@@ -4753,10 +4761,6 @@ module.exports = ret;
       }
     }
     return charset;
-  }
-
-  function cleanPath(path) {
-    return path.replace(/\/+/g, '/').split('/').map(encodeURIComponent).join('/');
   }
 
   function isFolderDescription(body) {
@@ -5136,13 +5140,8 @@ module.exports = ret;
 
     var body = options.body;
 
-    if (typeof(body) === 'object') {
-      if (isArrayBufferView(body)) {
-        /* alright. */
-        //FIXME empty block
-      } else if (body instanceof ArrayBuffer) {
-        body = new Uint8Array(body);
-      }
+    if (typeof(body) === 'object' && !isArrayBufferView(body) && body instanceof ArrayBuffer) {
+      body = new Uint8Array(body);
     }
     xhr.send(body);
     return pending.promise;
@@ -5279,10 +5278,9 @@ module.exports = ret;
 
 
 /** FILE: node_modules/webfinger.js/src/webfinger.js **/
-// -*- mode:js; js-indent-level:2 -*-
 /*!
  * webfinger.js
- *   version 2.0.5
+ *   version 2.1.4
  *   http://github.com/silverbucket/webfinger.js
  *
  * Developed and Maintained by:
@@ -5302,11 +5300,7 @@ if (typeof XMLHttpRequest === 'undefined') {
   XMLHttpRequest = require('xmlhttprequest').XMLHttpRequest;
 }
 
-if (typeof window === 'undefined') {
-  var window = {};
-}
-
-(function (window, undefined) {
+(function (undefined) {
 
   // URI to property name map
   var LINK_URI_MAPS = {
@@ -5323,6 +5317,7 @@ if (typeof window === 'undefined') {
     'http://schemas.google.com/g/2010#updates-from': 'updates',
     'https://camlistore.org/rel/server': 'camilstore'
   };
+
   var LINK_PROPERTIES = {
     'avatar': [],
     'remotestorage': [],
@@ -5337,10 +5332,6 @@ if (typeof window === 'undefined') {
 
   // list of endpoints to try, fallback from beginning to end.
   var URIS = ['webfinger', 'host-meta', 'host-meta.json'];
-  var LOGABLE = false;
-  if ((typeof console === 'object') && (typeof console.log === 'function')) {
-    LOGABLE = true;
-  }
 
   function _err(obj) {
     obj.toString = function () {
@@ -5364,7 +5355,6 @@ if (typeof window === 'undefined') {
     }
 
     this.config = {
-      debug:            (typeof config.debug !== 'undefined') ? config.debug : false,
       tls_only:         (typeof config.tls_only !== 'undefined') ? config.tls_only : true,
       webfist_fallback: (typeof config.webfist_fallback !== 'undefined') ? config.webfist_fallback : false,
       uri_fallback:     (typeof config.uri_fallback !== 'undefined') ? config.uri_fallback : false,
@@ -5372,12 +5362,10 @@ if (typeof window === 'undefined') {
     };
   }
 
-
   // make an http request and look for JRD response, fails if request fails
   // or response not json.
   WebFinger.prototype._fetchJRD = function (url, cb) {
     var self = this;
-    self._log('Request URL: ' + url);
     var xhr = new XMLHttpRequest();
 
     xhr.onreadystatechange = function () {
@@ -5394,7 +5382,7 @@ if (typeof window === 'undefined') {
           }
         } else if (xhr.status === 404) {
           cb(_err({
-            message: 'webfinger endpoint unreachable',
+            message: 'endpoint unreachable',
             url: url,
             status: xhr.status
           }));
@@ -5423,16 +5411,8 @@ if (typeof window === 'undefined') {
   };
 
   WebFinger.prototype._isLocalhost = function (host) {
-    console.log('checking: ', host);
     var local = /^localhost(\.localdomain)?(\:[0-9]+)?$/;
     return local.test(host);
-  };
-
-  WebFinger.prototype._log = function () {
-    var args = Array.prototype.splice.call(arguments, 0);
-    if ((this.config.debug) && (LOGABLE)) {
-      console.log.apply(window.console, args);
-    }
   };
 
   // processes JRD object as if it's a webfinger response object
@@ -5445,7 +5425,7 @@ if (typeof window === 'undefined') {
       if (typeof parsedJRD.error !== 'undefined') {
         cb(_err({ message: parsedJRD.error }));
       } else {
-        cb(_err({ message: 'received unknown response from server' }));
+        cb(_err({ message: 'unknown response from server' }));
       }
       return false;
     }
@@ -5471,8 +5451,6 @@ if (typeof window === 'undefined') {
             entry[item] = link[item];
           });
           result.idx.links[LINK_URI_MAPS[link.rel]].push(entry);
-        } else {
-          self._log('URI ' + links[i].rel + ' has no corresponding link property ' + LINK_URI_MAPS[link.rel]);
         }
       }
     });
@@ -5493,7 +5471,7 @@ if (typeof window === 'undefined') {
     if (typeof address !== 'string') {
       throw new Error('first parameter must be a user address');
     } else if (typeof cb !== 'function') {
-      throw new Error('second parameter must be a callback function');
+      throw new Error('second parameter must be a callback');
     }
 
     var self = this;
@@ -5503,7 +5481,7 @@ if (typeof window === 'undefined') {
     var protocol = 'https'; // we use https by default
 
     if (parts.length !== 2) {
-      cb(_err({ message: 'invalid user address ( should be in the format of: user@host.com )' }));
+      cb(_err({ message: 'invalid user address ' + address + ' ( expected format: user@host.com )' }));
       return false;
     } else if (self._isLocalhost(host)) {
       protocol = 'http';
@@ -5571,17 +5549,17 @@ if (typeof window === 'undefined') {
     setTimeout(_call, 0);
   };
 
-  window.WebFinger = WebFinger;
+  if (typeof window === 'object') {
+    window.WebFinger = WebFinger;
+  } else if (typeof (define) === 'function' && define.amd) {
+    define([], function () { return WebFinger; });
+  } else {
+    try {
+      module.exports = WebFinger;
+    } catch (e) {}
+  }
+})();
 
-})(window);
-
-if (typeof (define) === 'function' && define.amd) {
-  define([], function () { return window.WebFinger; });
-} else {
-  try {
-    module.exports = window.WebFinger;
-  } catch (e) {}
-}
 
 
 /** FILE: src/authorize.js **/
@@ -5736,13 +5714,22 @@ if (typeof (define) === 'function' && define.amd) {
      * Claim access on a given scope with given mode.
      *
      * Parameters:
-     *   scope - An access scope, such as "contacts" or "calendar".
-     *   mode  - Access mode to use. Either "r" or "rw".
+     *   scope - An access scope, such as "contacts" or "calendar"
+     *   mode  - Access mode. Either "r" for read-only or "rw" for read/write
      *
      * Example:
      *   (start code)
      *   remoteStorage.access.claim('contacts', 'r');
      *   remoteStorage.access.claim('pictures', 'rw');
+     *   (end code)
+     *
+     * Root access:
+     *   Claiming root access, meaning complete access to all files and folders
+     *   of a storage, can be done using an asterisk:
+     *
+     *   (start code)
+     *   remoteStorage.access.claim('*', 'rw');
+     *   (end code)
      */
     claim: function(scope, mode) {
       if (typeof(scope) !== 'string' || scope.indexOf('/') !== -1 || scope.length === 0) {
@@ -6142,9 +6129,7 @@ RemoteStorage.Assets = {
           this.rs.disconnect();
         }.bind(this));
       } catch(e) {
-        if (e.message && e.message.match(/Unknown event/)) {
-          // ignored. (the 0.7 widget-view interface didn't have a 'reset' event)
-        } else {
+        if (!(e.message && e.message.match(/Unknown event/))) { // ignored. (the 0.7 widget-view interface didn't have a 'reset' event)
           throw e;
         }
       }
@@ -6198,14 +6183,14 @@ RemoteStorage.Assets = {
     return function (error) {
       if (error instanceof RemoteStorage.DiscoveryError) {
         console.error('Discovery failed', error, '"' + error.message + '"');
-        widget.view.setState('initial', [error.message]);
+        stateSetter('initial', [error.message]);
       } else if (error instanceof RemoteStorage.SyncError) {
-        widget.view.setState('offline', []);
+        stateSetter('offline', []);
       } else if (error instanceof RemoteStorage.Unauthorized) {
-        widget.view.setState('unauthorized');
+        stateSetter('unauthorized');
       } else {
         RemoteStorage.log('[Widget] Unknown error');
-        widget.view.setState('error', [error]);
+        stateSetter('error', [error]);
       }
     };
   }
@@ -7203,7 +7188,11 @@ ValidatorContext.prototype.getSchema = function (url, urlHistory) {
 	}
 };
 ValidatorContext.prototype.searchSchemas = function (schema, url) {
-	if (schema && typeof schema === "object") {
+	if (Array.isArray(schema)) {
+		for (var i = 0; i < schema.length; i++) {
+			this.searchSchemas(schema[i], url);
+		}
+	} else if (schema && typeof schema === "object") {
 		if (typeof schema.id === "string") {
 			if (isTrustedUrl(url, schema.id)) {
 				if (this.schemas[schema.id] === undefined) {
@@ -7522,13 +7511,16 @@ ValidatorContext.prototype.validateNumeric = function validateNumeric(data, sche
 		|| null;
 };
 
+var CLOSE_ENOUGH_LOW = Math.pow(2, -51);
+var CLOSE_ENOUGH_HIGH = 1 - CLOSE_ENOUGH_LOW;
 ValidatorContext.prototype.validateMultipleOf = function validateMultipleOf(data, schema) {
 	var multipleOf = schema.multipleOf || schema.divisibleBy;
 	if (multipleOf === undefined) {
 		return null;
 	}
 	if (typeof data === "number") {
-		if (data % multipleOf !== 0) {
+		var remainder = (data/multipleOf)%1;
+		if (remainder >= CLOSE_ENOUGH_LOW && remainder < CLOSE_ENOUGH_HIGH) {
 			return this.createError(ErrorCodes.NUMBER_MULTIPLE_OF, {value: data, multipleOf: multipleOf});
 		}
 	}
@@ -9037,7 +9029,7 @@ Math.uuid = function (len, radix) {
       }
     },
 
-    _cleanPath: RS.WireClient.cleanPath,
+    _cleanPath: RemoteStorage.util.cleanPath,
 
     /**
      * Method: getItemURL
@@ -11453,24 +11445,6 @@ Math.uuid = function (len, radix) {
       0;
   }
 
-  function base64DecToArr(sBase64, nBlocksSize) {
-    var
-    sB64Enc = sBase64.replace(/[^A-Za-z0-9\+\/]/g, ""), nInLen = sB64Enc.length,
-    nOutLen = nBlocksSize ? Math.ceil((nInLen * 3 + 1 >> 2) / nBlocksSize) * nBlocksSize : nInLen * 3 + 1 >> 2, taBytes = new Uint8Array(nOutLen);
-
-    for (var nMod3, nMod4, nUint24 = 0, nOutIdx = 0, nInIdx = 0; nInIdx < nInLen; nInIdx++) {
-      nMod4 = nInIdx & 3;
-      nUint24 |= b64ToUint6(sB64Enc.charCodeAt(nInIdx)) << 18 - 6 * nMod4;
-      if (nMod4 === 3 || nInLen - nInIdx === 1) {
-        for (nMod3 = 0; nMod3 < 3 && nOutIdx < nOutLen; nMod3++, nOutIdx++) {
-          taBytes[nOutIdx] = nUint24 >>> (16 >>> nMod3 & 24) & 255;
-        }
-        nUint24 = 0;
-      }
-    }
-    return taBytes;
-  }
-
   function isBinary(node) {
     return node.match(/charset=binary/);
   }
@@ -12095,7 +12069,7 @@ Math.uuid = function (len, radix) {
             etagWithoutQuotes = meta.etag.substring(1, meta.etag.length-1);
           }
 
-          if (options && options.ifNoneMatch && (etagWithoutQuotes == options.ifNoneMatch)) {
+          if (options && options.ifNoneMatch && (etagWithoutQuotes === options.ifNoneMatch)) {
             return Promise.resolve({statusCode: 304});
           }
 
@@ -12383,7 +12357,8 @@ Math.uuid = function (len, radix) {
         return value;
       }
       this._propagate(key, value);
-      return this._storage[key] = value;
+      this._storage[key] = value;
+      return value;
     },
 
     /**
@@ -12410,7 +12385,8 @@ Math.uuid = function (len, radix) {
      */
     justSet : function (key, value) {
       key = key.toLowerCase();
-      return this._storage[key] = value;
+      this._storage[key] = value;
+      return value;
     },
 
     /**
@@ -13057,7 +13033,7 @@ Math.uuid = function (len, radix) {
         }
 
         // Conflict happened. Delete the copy created by DropBox
-        if (response.path != params.path) {
+        if (response.path !== params.path) {
           var deleteUrl = 'https://api.dropbox.com/1/fileops/delete?root=auto&path=' + encodeURIComponent(response.path);
           self._request('POST', deleteUrl, {});
 
