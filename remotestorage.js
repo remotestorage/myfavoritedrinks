@@ -1,4 +1,4 @@
-/** remotestorage.js 0.12.0-pre, http://remotestorage.io, MIT-licensed **/
+/** remotestorage.js 0.12.1, http://remotestorage.io, MIT-licensed **/
 
 /** FILE: lib/bluebird.js **/
 /**
@@ -5367,7 +5367,7 @@ module.exports = ret;
 /** FILE: node_modules/webfinger.js/src/webfinger.js **/
 /*!
  * webfinger.js
- *   version 2.2.0
+ *   version 2.2.1
  *   http://github.com/silverbucket/webfinger.js
  *
  * Developed and Maintained by:
@@ -5394,6 +5394,7 @@ if (typeof XMLHttpRequest === 'undefined') {
     'http://webfist.org/spec/rel': 'webfist',
     'http://webfinger.net/rel/avatar': 'avatar',
     'remotestorage': 'remotestorage',
+    'http://tools.ietf.org/id/draft-dejong-remotestorage': 'remotestorage',
     'remoteStorage': 'remotestorage',
     'http://www.packetizer.com/rel/share': 'share',
     'http://webfinger.net/rel/profile-page': 'profile',
