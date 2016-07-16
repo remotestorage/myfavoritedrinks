@@ -16,28 +16,33 @@
     inputElement = formElement.getElementsByTagName('input')[0];
     ulElement = document.getElementById('drink-list');
 
+    // Enable change events for changes in the same browser window
     RemoteStorage.config.changeEvents.window = true;
+
+    // Claim read/write access for the /myfavoritedrinks category
     remoteStorage.access.claim('myfavoritedrinks', 'rw');
+
+    // Display the RS connect widget
     remoteStorage.displayWidget();
+
     remoteStorage.myfavoritedrinks.init();
+
     remoteStorage.myfavoritedrinks.on('change', function(event) {
-      console.log('change from '+event.origin, event);
-      // add
       if(event.newValue && (! event.oldValue)) {
+        console.log('Change from '+event.origin+' (add)', event);
         displayDrink(event.relativePath, event.newValue.name);
       }
-      // remove
       else if((! event.newValue) && event.oldValue) {
+        console.log('Change from '+event.origin+' (remove)', event);
         undisplayDrink(event.relativePath);
+      }
+      else if(event.newValue && event.oldValue) {
+        console.log('Change from '+event.origin+' (change)', event);
+        // TODO update drink
       }
     });
 
     remoteStorage.on('ready', function() {
-
-      remoteStorage.on('disconnected', function() {
-        emptyDrinks();
-      });
-
       ulElement.addEventListener('click', function(event) {
         if(event.target.tagName === 'SPAN') {
           removeDrink(unprefixId(event.target.parentNode.id));
@@ -52,7 +57,10 @@
         }
         inputElement.value = '';
       });
+    });
 
+    remoteStorage.on('disconnected', function() {
+      emptyDrinks();
     });
   }
 
