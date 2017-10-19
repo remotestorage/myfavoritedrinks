@@ -1,5 +1,9 @@
 html { background:#000; }
-body { width:480px; margin:50px; padding:0; color:#fff; font:normal 1.5em/150% FreeSans,Helvetica,sans-serif; }
+body { position:relative; color:#fff; font:normal 1em FreeSans,Helvetica,sans-serif; }
+
+#wrapper { width:480px; padding:50px; margin:0; }
+
+#remotestorage-widget { top:0; right:1em; position:absolute }
 
 #background { width:100%; position:fixed; top:-100px; left:0; z-index:-1; }
 #background-credit { position:fixed; bottom:5px; right:10px; font-size:10px; opacity:.3; white-space:nowrap; }

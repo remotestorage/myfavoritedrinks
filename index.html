@@ -5,21 +5,22 @@
 	<link rel="stylesheet" href="style.css">
 	<script src="remotestorage.js"></script>
 	<script src="remotestorage-module.js"></script>
+	<script src="widget.js"></script>
 	<script src="app.js"></script>
 	<title>My Favorite Drinks (RS Example App)</title>
 </head>
 <body>
-	<div id="remotestorage-connect"></div>
+	<div id="wrapper">
+		<h1>My Favorite Drinks</h1>
 
-	<h1>My Favorite Drinks</h1>
+		<form id="add-drink">
+			<input placeholder="add a drink"> <button type="submit">add</button>
+		</form>
 
-	<form id="add-drink">
-		<input placeholder="add a drink"> <button type="submit">add</button>
-	</form>
+		<ul id="drink-list"></ul>
 
-	<ul id="drink-list"></ul>
-
-	<img id="background" src="drink.jpg" alt="">
-	<p id="background-credit">picture by <a href="https://secure.flickr.com/photos/artnow/442397741/">Artnow314</a></p>
+		<img id="background" src="drink.jpg" alt="">
+		<p id="background-credit">picture by <a href="https://secure.flickr.com/photos/artnow/442397741/">Artnow314</a></p>
+	</div>
 </body>
 </html>

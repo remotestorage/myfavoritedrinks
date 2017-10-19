@@ -16,14 +16,12 @@
     inputElement = formElement.getElementsByTagName('input')[0];
     ulElement = document.getElementById('drink-list');
 
-    // Enable change events for changes in the same browser window
-    RemoteStorage.config.changeEvents.window = true;
-
     // Claim read/write access for the /myfavoritedrinks category
     remoteStorage.access.claim('myfavoritedrinks', 'rw');
 
     // Display the RS connect widget
-    remoteStorage.displayWidget();
+    const widget = new Widget(remoteStorage);
+    widget.attach();
 
     remoteStorage.myfavoritedrinks.init();
 

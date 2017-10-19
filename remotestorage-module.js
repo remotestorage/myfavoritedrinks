@@ -1,4 +1,10 @@
-RemoteStorage.defineModule('myfavoritedrinks', function(privateClient) {
+// This constant will be reused by the other files
+// Enable change events for changes in the same browser window
+const remoteStorage = new RemoteStorage(
+  {changeEvents: { local: true, window: true, remote: true, conflicts: true }}
+);
+
+remoteStorage.addModule({name: 'myfavoritedrinks', builder: function(privateClient) {
   privateClient.declareType('drink', {
     type: 'object',
     properties: {
@@ -32,4 +38,4 @@ RemoteStorage.defineModule('myfavoritedrinks', function(privateClient) {
     }
   };
 
-});
+}});
