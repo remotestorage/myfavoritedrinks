@@ -1,6 +1,6 @@
-// This constant will be reused by the other files
+// This variable will be reused in the other files
 // Enable change events for changes in the same browser window
-const remoteStorage = new RemoteStorage(
+var remoteStorage = new RemoteStorage(
   {changeEvents: { local: true, window: true, remote: true, conflicts: true }}
 );
 

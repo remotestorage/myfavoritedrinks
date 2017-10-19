@@ -20,7 +20,7 @@
     remoteStorage.access.claim('myfavoritedrinks', 'rw');
 
     // Display the RS connect widget
-    const widget = new Widget(remoteStorage);
+    var widget = new Widget(remoteStorage);
     widget.attach();
 
     remoteStorage.myfavoritedrinks.init();
