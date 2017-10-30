@@ -18,7 +18,7 @@
 
     var remoteStorage = new RemoteStorage({
       changeEvents: { local: true, window: true, remote: true, conflicts: true },
-      modules: [window.myfavoritedrinks]
+      modules: [MyFavoriteDrinks]
     });
 
     // Claim read/write access for the /myfavoritedrinks category

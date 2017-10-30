@@ -1,4 +1,4 @@
-window.myfavoritedrinks = {
+var MyFavoriteDrinks = {
   name: 'myfavoritedrinks',
   builder: function(privateClient) {
     privateClient.declareType('drink', {
