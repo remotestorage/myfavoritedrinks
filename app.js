@@ -16,6 +16,11 @@
     inputElement = formElement.getElementsByTagName('input')[0];
     ulElement = document.getElementById('drink-list');
 
+    var remoteStorage = new RemoteStorage({
+      changeEvents: { local: true, window: true, remote: true, conflicts: true },
+      modules: [window.myfavoritedrinks]
+    });
+
     // Claim read/write access for the /myfavoritedrinks category
     remoteStorage.access.claim('myfavoritedrinks', 'rw');
 
