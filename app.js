@@ -4,6 +4,11 @@
   var ulElement;
   var drinkRowPrefix = 'drinkrow-';
 
+  var remoteStorage = new RemoteStorage({
+    changeEvents: { local: true, window: true, remote: true, conflicts: true },
+    modules: [MyFavoriteDrinks]
+  });
+
   function prefixId(id) {
     return drinkRowPrefix + id;
   }
@@ -15,11 +20,6 @@
     formElement = document.getElementById('add-drink');
     inputElement = formElement.getElementsByTagName('input')[0];
     ulElement = document.getElementById('drink-list');
-
-    var remoteStorage = new RemoteStorage({
-      changeEvents: { local: true, window: true, remote: true, conflicts: true },
-      modules: [MyFavoriteDrinks]
-    });
 
     // Claim read/write access for the /myfavoritedrinks category
     remoteStorage.access.claim('myfavoritedrinks', 'rw');
