@@ -1,5 +1,15 @@
-html { background:#000; }
-body { position:relative; color:#fff; font:normal 1em FreeSans,Helvetica,sans-serif; }
+html { background:#000; height: 100%; }
+body {
+  margin: 0;
+  min-height: 100%;
+  position: relative;
+  color: #fff;
+  font: normal 1em FreeSans, Helvetica, sans-serif;
+  background: url('drink.jpg') no-repeat;
+  background-position: 100% 0;
+  background-size: contain;
+  background-attachment: fixed;
+}
 
 #wrapper { font-size: 1.5em; width:480px; padding:50px; margin:0; }
 
