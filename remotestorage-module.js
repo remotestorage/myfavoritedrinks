@@ -1,35 +1,36 @@
-RemoteStorage.defineModule('myfavoritedrinks', function(privateClient) {
-  privateClient.declareType('drink', {
-    type: 'object',
-    properties: {
-      name: { type: 'string' }
-    },
-    required: ['name']
-  });
-
-  return {
-    exports: {
-
-      init: function() {
-        privateClient.cache('');
+var MyFavoriteDrinks = {
+  name: 'myfavoritedrinks',
+  builder: function(privateClient) {
+    privateClient.declareType('drink', {
+      type: 'object',
+      properties: {
+        name: { type: 'string' }
       },
+      required: ['name']
+    });
 
-      on: privateClient.on,
+    return {
+      exports: {
 
-      addDrink: function(name) {
-        var id = name.toLowerCase().replace(/\s|\//g, '-');
-        return privateClient.storeObject('drink', id, {
-          name: name
-        });
-      },
+        init: function() {
+          privateClient.cache('');
+        },
 
-      removeDrink: privateClient.remove.bind(privateClient),
+        on: privateClient.on,
 
-      listDrinks: function() {
-        return privateClient.getAll('');
+        addDrink: function(name) {
+          var id = name.toLowerCase().replace(/\s|\//g, '-');
+          return privateClient.storeObject('drink', id, {
+            name: name
+          });
+        },
+
+        removeDrink: privateClient.remove.bind(privateClient),
+
+        listDrinks: function() {
+          return privateClient.getAll('');
+        }
       }
-
     }
-  };
-
-});
+  }
+};
