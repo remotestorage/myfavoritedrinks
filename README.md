@@ -15,9 +15,10 @@ This is a demo app for [remoteStorage.js](http://remotestorage.io/integrate/).
 1. type in `tester@localhost:8000` in the input field of the widget, click through
     * *tester* being a test username
     * *localhost:8000* is where the *remotestorage* server is responding as per step 2.
+1. what happens at this point is server specific, if you're running armadietto (as per step 2) continue on
 1. the login page should show up
 1. register your new *tester* user
-    1. click *registger*
+    1. click *Sign up* in the upper right corner
     1. type in `tester@acme.com` as a fake email
     1. type in some password
     1. click through
