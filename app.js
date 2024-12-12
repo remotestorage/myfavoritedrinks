@@ -6,6 +6,8 @@
 
   var remoteStorage = new RemoteStorage({
     changeEvents: { local: true, window: true, remote: true, conflicts: true },
+    cache: false,
+    logging: true,
     modules: [MyFavoriteDrinks]
   });
 
@@ -54,6 +56,7 @@
     });
 
     remoteStorage.on('ready', function() {
+      console.log('remoteStorage ready');
       ulElement.addEventListener('click', function(event) {
         if(event.target.tagName === 'SPAN') {
           removeDrink(unprefixId(event.target.parentNode.id));

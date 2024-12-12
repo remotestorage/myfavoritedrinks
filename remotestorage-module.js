@@ -13,13 +13,14 @@ var MyFavoriteDrinks = {
       exports: {
 
         init: function() {
-          privateClient.cache('');
+          // privateClient.cache('');
         },
 
         on: privateClient.on,
 
         addDrink: function(name) {
           var id = name.toLowerCase().replace(/\s|\//g, '-');
+          console.log('addDrink calls privateClient.storeObject', 'drink', id, name);
           return privateClient.storeObject('drink', id, {
             name: name
           });
@@ -28,6 +29,7 @@ var MyFavoriteDrinks = {
         removeDrink: privateClient.remove.bind(privateClient),
 
         listDrinks: function() {
+          console.log('listDrinks calls privateClient.getAll');
           return privateClient.getAll('');
         }
       }
