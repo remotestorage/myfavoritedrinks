@@ -56,7 +56,6 @@
     });
 
     remoteStorage.on('ready', function() {
-      console.log('remoteStorage ready');
       ulElement.addEventListener('click', function(event) {
         if(event.target.tagName === 'SPAN') {
           removeDrink(unprefixId(event.target.parentNode.id));
