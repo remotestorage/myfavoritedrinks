@@ -6,7 +6,7 @@
 
   var remoteStorage = new RemoteStorage({
     changeEvents: { local: true, window: true, remote: true, conflicts: true },
-    cache: false,
+    // cache: false,
     logging: true,
     modules: [MyFavoriteDrinks]
   });
