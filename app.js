@@ -6,6 +6,8 @@
 
   var remoteStorage = new RemoteStorage({
     changeEvents: { local: true, window: true, remote: true, conflicts: true },
+    // cache: false,
+    logging: true,
     modules: [MyFavoriteDrinks]
   });
 
@@ -24,8 +26,16 @@
     // Claim read/write access for the /myfavoritedrinks category
     remoteStorage.access.claim('myfavoritedrinks', 'rw');
 
-    // Display the RS connect widget
-    var widget = new Widget(remoteStorage);
+    // Display the RS connect widget including options for Solid
+    var widget = new Widget(remoteStorage, {
+      solidProviders: {
+          providers: [
+              Widget.SOLID_COMMUNITY,
+              Widget.INRUPT
+          ],
+          allowAnyProvider: true
+      }
+    });
     widget.attach();
 
     remoteStorage.myfavoritedrinks.init();
