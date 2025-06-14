@@ -9,7 +9,7 @@ body {
   position: relative;
   color: #fff;
   font: normal 1em FreeSans, Helvetica, sans-serif;
-  background: url('drink.jpg') no-repeat;
+  background: url('/img/drink.jpg') no-repeat;
   background-position: 100% 0;
   background-size: contain;
   background-attachment: fixed;
