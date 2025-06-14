@@ -2,6 +2,8 @@
 <html>
 <head>
 	<meta charset="utf-8">
+	<title>My Favorite Drinks (RS Example App)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
 	<link rel="stylesheet" href="style.css">
   <link rel="icon" href="/favicon.ico" sizes="any">
   <link rel="icon" type="image/png" sizes="512x512" href="/img/icon.png">
@@ -12,14 +14,14 @@
 	<script src="remotestorage-module.js"></script>
 	<script src="widget.js"></script>
 	<script src="app.js"></script>
-	<title>My Favorite Drinks (RS Example App)</title>
 </head>
 <body>
+  <div id="widget-wrapper"></div>
 	<div id="wrapper">
 		<h1>My Favorite Drinks</h1>
 
 		<form id="add-drink">
-			<input placeholder="add a drink"> <button type="submit">add</button>
+			<input placeholder="Add a drink"><button type="submit">add</button>
 		</form>
 
 		<ul id="drink-list"></ul>
