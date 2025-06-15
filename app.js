@@ -48,7 +48,8 @@
       }
       else if (event.newValue !== undefined && event.oldValue !== undefined) {
         console.log('Change from '+event.origin+' (change)', event);
-        // TODO update drink
+        undisplayDrink(event.relativePath);
+        displayDrink(event.relativePath, event.newValue.name);
       }
     });
 
