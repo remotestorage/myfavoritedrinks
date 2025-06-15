@@ -36,15 +36,15 @@
     remoteStorage.myfavoritedrinks.init();
 
     remoteStorage.myfavoritedrinks.on('change', function(event) {
-      if(event.newValue && (! event.oldValue)) {
+      if (event.newValue !== undefined && event.oldValue === undefined) {
         console.log('Change from '+event.origin+' (add)', event);
         displayDrink(event.relativePath, event.newValue.name);
       }
-      else if((! event.newValue) && event.oldValue) {
+      else if (event.newValue === undefined && event.oldValue !== undefined) {
         console.log('Change from '+event.origin+' (remove)', event);
         undisplayDrink(event.relativePath);
       }
-      else if(event.newValue && event.oldValue) {
+      else if (event.newValue !== undefined && event.oldValue !== undefined) {
         console.log('Change from '+event.origin+' (change)', event);
         // TODO update drink
       }
