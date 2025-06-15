@@ -1,10 +1,10 @@
 (function() {
-  var inputElement;
-  var formElement;
-  var ulElement;
-  var drinkRowPrefix = 'drinkrow-';
+  let inputElement;
+  let formElement;
+  let ulElement;
+  const itemPrefix = 'item-';
 
-  var remoteStorage = new RemoteStorage({
+  const remoteStorage = new RemoteStorage({
     changeEvents: { local: true, window: true, remote: true, conflicts: true },
     modules: [MyFavoriteDrinks]
   });
@@ -18,10 +18,10 @@
   window.baseClient    = remoteStorage.scope("/myfavoritedrinks/")
 
   function prefixId(id) {
-    return drinkRowPrefix + id;
+    return itemPrefix + id;
   }
   function unprefixId(prefixedId) {
-    return prefixedId.replace(drinkRowPrefix, '');
+    return prefixedId.replace(itemPrefix, '');
   }
 
   function init() {
@@ -30,8 +30,8 @@
     ulElement = document.getElementById('drink-list');
 
     // Display the RS connect widget
-    var widget = new Widget(remoteStorage);
-    widget.attach();
+    const widget = new Widget(remoteStorage);
+    widget.attach('widget-wrapper');
 
     remoteStorage.myfavoritedrinks.init();
 
@@ -59,8 +59,8 @@
 
       formElement.addEventListener('submit', function(event) {
         event.preventDefault();
-        var trimmedText = inputElement.value.trim();
-        if(trimmedText) {
+        const trimmedText = inputElement.value.trim();
+        if (trimmedText) {
           addDrink(trimmedText);
         }
         inputElement.value = '';
@@ -87,9 +87,9 @@
   }
 
   function displayDrink(id, name) {
-    var domID = prefixId(id);
-    var liElement = document.getElementById(domID);
-    if(! liElement) {
+    const domID = prefixId(id);
+    let liElement = document.getElementById(domID);
+    if (!liElement) {
       liElement = document.createElement('li');
       liElement.id = domID;
       ulElement.appendChild(liElement);
@@ -99,7 +99,7 @@
   }
 
   function undisplayDrink(id) {
-    var elem = document.getElementById(prefixId(id));
+    const elem = document.getElementById(prefixId(id));
     ulElement.removeChild(elem);
   }
 

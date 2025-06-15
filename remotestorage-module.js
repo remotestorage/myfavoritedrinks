@@ -1,4 +1,4 @@
-var MyFavoriteDrinks = {
+const MyFavoriteDrinks = {
   name: 'myfavoritedrinks',
   builder: function(privateClient) {
     privateClient.declareType('drink', {
