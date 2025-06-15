@@ -9,6 +9,14 @@
     modules: [MyFavoriteDrinks]
   });
 
+  // Claim read/write access for the /myfavoritedrinks category
+  remoteStorage.access.claim('myfavoritedrinks', 'rw');
+
+  // Add RemoteStorage and BaseClient instances to window for easy console
+  // access
+  window.remoteStorage = remoteStorage;
+  window.baseClient    = remoteStorage.scope("/myfavoritedrinks/")
+
   function prefixId(id) {
     return drinkRowPrefix + id;
   }
@@ -20,9 +28,6 @@
     formElement = document.getElementById('add-drink');
     inputElement = formElement.getElementsByTagName('input')[0];
     ulElement = document.getElementById('drink-list');
-
-    // Claim read/write access for the /myfavoritedrinks category
-    remoteStorage.access.claim('myfavoritedrinks', 'rw');
 
     // Display the RS connect widget
     var widget = new Widget(remoteStorage);
