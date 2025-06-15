@@ -5,6 +5,7 @@
 html {
   background: #000;
   height: 100%;
+  font: normal 16px FreeSans, Helvetica, sans-serif;
 }
 
 body {
@@ -12,7 +13,6 @@ body {
   min-height: 100%;
   position: relative;
   color: #fff;
-  font: normal 16px FreeSans, Helvetica, sans-serif;
   background: url('/img/drink.jpg') no-repeat;
   background-position: 100% 0;
   background-size: contain;
@@ -25,6 +25,14 @@ body {
   top: -100px;
   left: 0;
   z-index: -1;
+}
+
+#wrapper {
+  width: 600px;
+  max-width: 100%;
+  padding: 50px;
+  margin: 0;
+  font-size: 1.5rem;
 }
 
 #wrapper h1 {
@@ -44,23 +52,7 @@ body {
   background: #444;
 }
 
-#wrapper {
-  width: 600px;
-  max-width: 100%;
-  padding: 50px;
-  margin: 0;
-  font-size: 1.5rem;
-}
-
-#add-drink {
-  display: flex;
-  flex-direction: row;
-  gap: 0.5rem;
-  max-width: 480px;
-}
-
-#add-drink input {
-  flex-grow: 1;
+#wrapper input[type=text] {
   height: 50px;
   padding: 0.2rem 0.8rem;
   font-size: 1.5rem;
@@ -72,12 +64,22 @@ body {
   transition: border-color 0.3s ease;
 }
 
-#add-drink input::placeholder {
-  color: #888;
+#wrapper input[type=text]:focus {
+  border-color: #888;
 }
 
-#add-drink input:focus {
-  border-color: #ccc;
+#add-drink {
+  display: flex;
+  flex-direction: row;
+  gap: 0.5rem;
+}
+
+#add-drink input {
+  flex-grow: 1;
+}
+
+#add-drink input::placeholder {
+  color: #888;
 }
 
 #add-drink button {
@@ -87,24 +89,58 @@ body {
   font-size: 1.25rem;
 }
 
-#wrapper li {
-  line-height: 1.5em;
+ul#drink-list {
+  list-style: none;
+  padding-left: 0;
+  margin-top: 2rem;
 }
 
-#wrapper li:hover button {
-  display: inline-block;
+#drink-list li {
+  position: relative;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.2rem 0;
 }
 
-#wrapper li button {
-  display: none;
+#drink-list li:not(:last-child) {
+  border-bottom: 1px solid #333;
+}
+
+#drink-list li input[type=text] {
+  background: #000;
+  border-color: #000;
+  flex-grow: 1;
+  flex-shrink: 1;
+  width: 100%;
+  max-width: 100%;
+}
+
+#drink-list li input[type=text]:focus {
+  background: #1a1a1a;
+  border-color: #888;
+}
+
+#drink-list button.save {
+  visibility: hidden;
+  flex-grow: 0;
+  flex-shrink: 0;
+  padding: 0.4rem 1rem;
+  font-size: 1.25rem;
+}
+
+#drink-list button.delete {
   opacity: 0.5;
   width: 2rem;
   height: 2rem;
+  flex-grow: 0;
+  flex-shrink: 0;
   font-size: 1.25rem;
   margin-left: 0.8rem;
 }
 
-#wrapper li button:hover {
+#drink-list button.delete:hover {
   opacity: 1;
 }
 
@@ -128,7 +164,11 @@ body {
 }
 
 @media (max-width: 500px) {
-  h1 {
+  html {
+    font-size: 14px;
+  }
+
+  #wrapper h1 {
     font-size: 2rem;
   }
 
@@ -148,10 +188,6 @@ body {
 
   #add-drink button {
     width: 100%;
-  }
-
-  #wrapper li button {
-    display: inline-block;
   }
 
   #widget-wrapper {

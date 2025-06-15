@@ -21,6 +21,7 @@
   function prefixId(id) {
     return itemPrefix + id;
   }
+
   function unprefixId(prefixedId) {
     return prefixedId.replace(itemPrefix, '');
   }
@@ -48,8 +49,7 @@
       }
       else if (event.newValue !== undefined && event.oldValue !== undefined) {
         console.log('Change from '+event.origin+' (change)', event);
-        undisplayDrink(event.relativePath);
-        displayDrink(event.relativePath, event.newValue.name);
+        renderDrinks();
       }
     });
 
@@ -82,12 +82,22 @@
     remoteStorage.myfavoritedrinks.addDrink(name);
   }
 
+  function updateDrink(id, name) {
+    remoteStorage.myfavoritedrinks.updateDrink(id, name);
+  }
+
   function removeDrink(id) {
     remoteStorage.myfavoritedrinks.removeDrink(id);
   }
 
-  // Currently not used
+  function renderDrinks() {
+    remoteStorage.myfavoritedrinks.getAllDrinks().then(drinks => {
+      displayDrinks(drinks);
+    });
+  }
+
   function displayDrinks(drinks) {
+    ulElement.innerHTML = '';
     for (const drinkId in drinks) {
       displayDrink(drinkId, drinks[drinkId].name);
     }
@@ -101,8 +111,29 @@
       liElement.id = domID;
       ulElement.appendChild(liElement);
     }
-    liElement.appendChild(document.createTextNode(name));//this will do some html escaping
-    liElement.innerHTML += '<button class="delete" title="Delete">×</button>';
+    liElement.innerHTML += `
+      <input type="text" value="${name}" placeholder="Drink name">
+      <button class="save" title="Save">Save</button>
+      <button class="delete" title="Delete">×</button>
+    `;
+    const saveButton = liElement.querySelector('button.save');
+    const inputEl = liElement.querySelector('input');
+    inputEl.addEventListener("focus", () => {
+      saveButton.style.visibility = 'visible';
+    });
+    inputEl.addEventListener("blur", () => {
+      setTimeout(() => {
+        saveButton.style.visibility = 'hidden';
+      }, 100)
+    });
+    inputEl.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') {
+        updateDrink(unprefixId(domID), inputEl.value);
+      }
+    });
+    saveButton.addEventListener("click", () => {
+      updateDrink(unprefixId(domID), inputEl.value);
+    });
   }
 
   function undisplayDrink(id) {

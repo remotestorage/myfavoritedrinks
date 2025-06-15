@@ -27,10 +27,18 @@ const MyFavoriteDrinks = {
           });
         },
 
+        updateDrink: function(id, name) {
+          return privateClient.storeObject('drink', id, {
+            name: name
+          });
+        },
+
         removeDrink: privateClient.remove.bind(privateClient),
 
-        listDrinks: function() {
-          return privateClient.getAll('');
+        getAllDrinks: function() {
+          return privateClient.getAll('', false).then(drinks => {
+            return Object.fromEntries(Object.entries(drinks).sort());
+          });
         }
       }
     }
