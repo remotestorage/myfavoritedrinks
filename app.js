@@ -5,6 +5,7 @@
   const itemPrefix = 'item-';
 
   const remoteStorage = new RemoteStorage({
+    // logging: true,
     changeEvents: { local: true, window: true, remote: true, conflicts: true },
     modules: [MyFavoriteDrinks]
   });
@@ -33,6 +34,7 @@
     const widget = new Widget(remoteStorage);
     widget.attach('widget-wrapper');
 
+    // Enable caching
     remoteStorage.myfavoritedrinks.init();
 
     remoteStorage.myfavoritedrinks.on('change', function(event) {
@@ -80,8 +82,9 @@
     remoteStorage.myfavoritedrinks.removeDrink(id);
   }
 
+  // Currently not used
   function displayDrinks(drinks) {
-    for(var drinkId in drinks) {
+    for (const drinkId in drinks) {
       displayDrink(drinkId, drinks[drinkId].name);
     }
   }
