@@ -55,7 +55,10 @@
 
     remoteStorage.on('ready', function() {
       ulElement.addEventListener('click', function(event) {
-        if(event.target.tagName === 'SPAN') {
+        if (
+          event.target.tagName === 'BUTTON' &&
+          event.target.classList.contains('delete')
+        ) {
           removeDrink(unprefixId(event.target.parentNode.id));
         }
       });
@@ -99,7 +102,7 @@
       ulElement.appendChild(liElement);
     }
     liElement.appendChild(document.createTextNode(name));//this will do some html escaping
-    liElement.innerHTML += ' <span title="Delete">×</span>';
+    liElement.innerHTML += '<button class="delete" title="Delete">×</button>';
   }
 
   function undisplayDrink(id) {
