@@ -165,15 +165,15 @@ ul#drink-list {
 
 @media (max-width: 500px) {
   html {
-    font-size: 14px;
+    font-size: 12px;
   }
 
   #wrapper h1 {
-    font-size: 2rem;
+    font-size: 2.5rem;
   }
 
   #wrapper {
-    padding: 5rem 1rem 0 1rem;
+    padding: 6rem 1rem 0 1rem;
   }
 
   #add-drink {
