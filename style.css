@@ -137,7 +137,7 @@ ul#drink-list {
   flex-grow: 0;
   flex-shrink: 0;
   font-size: 1.25rem;
-  margin-left: 0.8rem;
+  margin-right: 0.8rem;
 }
 
 #drink-list button.delete:hover {
