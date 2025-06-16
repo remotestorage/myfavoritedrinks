@@ -19,8 +19,7 @@ const MyFavoriteDrinks = {
         on: privateClient.on,
 
         addDrink: function(name) {
-          const slug = name.toLowerCase().replace(/\s|\//g, '-');
-          const id = `${new Date().getTime()}-${slug}`
+          const id = `${new Date().getTime()}`;
 
           return privateClient.storeObject('drink', id, {
             name: name
