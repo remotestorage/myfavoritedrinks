@@ -133,7 +133,7 @@
     });
     inputEl.addEventListener('keydown', (event) => {
       if (event.key === 'Enter') {
-        updateDrink(unprefixId(domID), inputEl.value);
+        updateDrink(id, inputEl.value);
       }
     });
     saveButton.addEventListener("click", () => {
