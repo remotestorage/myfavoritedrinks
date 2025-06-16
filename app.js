@@ -6,7 +6,7 @@
 
   const remoteStorage = new RemoteStorage({
     // logging: true,
-    changeEvents: { local: true, window: true, remote: true, conflicts: true },
+    changeEvents: { local: true, window: true, remote: true, conflict: true },
     modules: [MyFavoriteDrinks]
   });
 
@@ -38,7 +38,7 @@
     // Enable caching
     remoteStorage.myfavoritedrinks.init();
 
-    remoteStorage.myfavoritedrinks.on('change', function(event) {
+    remoteStorage.myfavoritedrinks.on('change', (event) => {
       if (event.newValue !== undefined && event.oldValue === undefined) {
         console.log('Change from '+event.origin+' (add)', event);
         displayDrink(event.relativePath, event.newValue.name);
@@ -49,7 +49,12 @@
       }
       else if (event.newValue !== undefined && event.oldValue !== undefined) {
         console.log('Change from '+event.origin+' (change)', event);
-        renderDrinks();
+        if (event.origin !== 'conflict' || (event.oldValue.name === event.newValue.name)) {
+          renderDrinks();
+        } else {
+          const name = `${event.oldValue.name} / ${event.newValue.name} (was ${event.lastCommonValue.name})`;
+          updateDrink(event.relativePath, name).then(renderDrinks);
+        }
       }
     });
 
@@ -83,7 +88,7 @@
   }
 
   function updateDrink(id, name) {
-    remoteStorage.myfavoritedrinks.updateDrink(id, name);
+    return remoteStorage.myfavoritedrinks.updateDrink(id, name);
   }
 
   function removeDrink(id) {
