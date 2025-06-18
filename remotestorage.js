@@ -7104,11 +7104,24 @@ class Sync {
             if (node.common.itemsMap) {
                 for (const itemName in node.common.itemsMap) {
                     if (!node.local.itemsMap[itemName]) {
-                        // Indicates the node is either newly being fetched
-                        // has been deleted locally (whether or not leading to conflict);
-                        // before listing it in local listings, check if a local deletion
-                        // exists.
+                        // Indicates the node is either newly being fetched, or
+                        // has been deleted locally (whether or not leading to
+                        // conflict); before listing it in local listings, check
+                        // if a local deletion exists.
                         node.local.itemsMap[itemName] = false;
+                    }
+                }
+                for (const itemName in node.local.itemsMap) {
+                    if (!node.common.itemsMap[itemName]) {
+                        // When an item appears in a folder's local itemsMap, but
+                        // not in remote/common, it may or may not have been
+                        // changed or deleted locally. The local itemsMap may
+                        // only contain it, beause the item existed when
+                        // *another* local item was changed, so we need to make
+                        // sure that it's checked/processed again, so it will be
+                        // deleted if there's no local change waiting to be
+                        // pushed out.
+                        this.addTask(node.path + itemName);
                     }
                 }
                 if ((0, util_1.equal)(node.local.itemsMap, node.common.itemsMap)) {
@@ -7122,22 +7135,28 @@ class Sync {
      * Merge/process document node items after updates from remote
      */
     autoMergeDocument(node) {
+        var _a;
         if (hasNoRemoteChanges(node)) {
             node = mergeMutualDeletion(node);
             delete node.remote;
         }
         else if (node.remote.body !== undefined) {
-            (0, log_1.default)('[Sync] Emitting conflict event');
-            setTimeout(this.rs.local.emitChange.bind(this.rs.local), 10, {
-                origin: 'conflict',
-                path: node.path,
-                oldValue: node.local.body,
-                newValue: node.remote.body,
-                lastCommonValue: node.common.body,
-                oldContentType: node.local.contentType,
-                newContentType: node.remote.contentType,
-                lastCommonContentType: node.common.contentType
-            });
+            if (node.remote.body === false && ((_a = node.local) === null || _a === void 0 ? void 0 : _a.body) === false) {
+                // Deleted on both sides, nothing to do
+            }
+            else {
+                (0, log_1.default)('[Sync] Emitting conflict event');
+                setTimeout(this.rs.local.emitChange.bind(this.rs.local), 10, {
+                    origin: 'conflict',
+                    path: node.path,
+                    oldValue: node.local.body,
+                    newValue: node.remote.body,
+                    lastCommonValue: node.common.body,
+                    oldContentType: node.local.contentType,
+                    newContentType: node.remote.contentType,
+                    lastCommonContentType: node.common.contentType
+                });
+            }
             if (node.remote.body === false) {
                 node.common = {};
             }
@@ -7365,53 +7384,60 @@ class Sync {
                 parentPath = pathsFromRootArr[1];
                 paths = [path, parentPath];
             }
-            return this.rs.local.getNodes(paths).then((nodes) => {
-                let itemName;
-                let node = nodes[path];
-                let parentNode;
-                const missingChildren = {};
-                function collectMissingChildren(folder) {
-                    if (folder && folder.itemsMap) {
-                        for (itemName in folder.itemsMap) {
-                            if (!bodyOrItemsMap[itemName]) {
-                                missingChildren[itemName] = true;
-                            }
+            const nodes = yield this.rs.local.getNodes(paths);
+            const parentNode = nodes[parentPath];
+            const missingChildren = {};
+            let node = nodes[path];
+            let itemName;
+            function collectMissingChildren(folder) {
+                if (folder && folder.itemsMap) {
+                    for (itemName in folder.itemsMap) {
+                        if (!bodyOrItemsMap[itemName]) {
+                            missingChildren[itemName] = true;
                         }
                     }
                 }
-                if (typeof (node) !== 'object' ||
-                    node.path !== path ||
-                    typeof (node.common) !== 'object') {
-                    node = { path: path, common: {} };
-                    nodes[path] = node;
+            }
+            if (typeof (node) !== 'object' ||
+                node.path !== path ||
+                typeof (node.common) !== 'object') {
+                node = { path: path, common: {} };
+                nodes[path] = node;
+            }
+            node.remote = {
+                revision: revision,
+                timestamp: this.now()
+            };
+            if ((0, util_1.isFolder)(path)) {
+                collectMissingChildren(node.common);
+                collectMissingChildren(node.remote);
+                node.remote.itemsMap = {};
+                for (itemName in bodyOrItemsMap) {
+                    node.remote.itemsMap[itemName] = true;
                 }
-                node.remote = {
-                    revision: revision,
-                    timestamp: this.now()
-                };
-                if ((0, util_1.isFolder)(path)) {
-                    collectMissingChildren(node.common);
-                    collectMissingChildren(node.remote);
-                    node.remote.itemsMap = {};
-                    for (itemName in bodyOrItemsMap) {
-                        node.remote.itemsMap[itemName] = true;
-                    }
-                }
-                else {
-                    node.remote.body = bodyOrItemsMap;
-                    node.remote.contentType = contentType;
-                    parentNode = nodes[parentPath];
-                    if (parentNode && parentNode.local && parentNode.local.itemsMap) {
-                        itemName = path.substring(parentPath.length);
+            }
+            else {
+                node.remote.body = bodyOrItemsMap;
+                node.remote.contentType = contentType;
+                if (parentNode && parentNode.local && parentNode.local.itemsMap) {
+                    itemName = path.substring(parentPath.length);
+                    if (bodyOrItemsMap !== false) {
                         parentNode.local.itemsMap[itemName] = true;
-                        if ((0, util_1.equal)(parentNode.local.itemsMap, parentNode.common.itemsMap)) {
-                            delete parentNode.local;
+                    }
+                    else {
+                        if (parentNode.local.itemsMap[itemName]) {
+                            // node is 404 on remote, can safely be removed from
+                            // parent's local itemsMap now
+                            delete parentNode.local.itemsMap[itemName];
                         }
                     }
+                    if ((0, util_1.equal)(parentNode.local.itemsMap, parentNode.common.itemsMap)) {
+                        delete parentNode.local;
+                    }
                 }
-                nodes[path] = this.autoMerge(node);
-                return { toBeSaved: nodes, missingChildren };
-            });
+            }
+            nodes[path] = this.autoMerge(node);
+            return { toBeSaved: nodes, missingChildren };
         });
     }
     /**
