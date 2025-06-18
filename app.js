@@ -5,7 +5,7 @@
   const itemPrefix = 'item-';
 
   const remoteStorage = new RemoteStorage({
-    // logging: true,
+    logging: true,
     changeEvents: { local: true, window: true, remote: true, conflict: true },
     modules: [MyFavoriteDrinks]
   });
@@ -39,15 +39,15 @@
     remoteStorage.myfavoritedrinks.init();
 
     remoteStorage.myfavoritedrinks.on('change', (event) => {
-      if (event.newValue !== undefined && event.oldValue === undefined) {
+      if (typeof event.newValue === 'object' && typeof event.oldValue !== 'object') {
         console.log('Change from '+event.origin+' (add)', event);
         displayDrink(event.relativePath, event.newValue.name);
       }
-      else if (event.newValue === undefined && event.oldValue !== undefined) {
+      else if (typeof event.newValue !== 'object' && typeof event.oldValue === 'object') {
         console.log('Change from '+event.origin+' (remove)', event);
         undisplayDrink(event.relativePath);
       }
-      else if (event.newValue !== undefined && event.oldValue !== undefined) {
+      else if (typeof event.newValue === 'object' && typeof event.oldValue === 'object') {
         console.log('Change from '+event.origin+' (change)', event);
         if (event.origin !== 'conflict' || (event.oldValue.name === event.newValue.name)) {
           renderDrinks();
@@ -55,6 +55,8 @@
           const name = `${event.oldValue.name} / ${event.newValue.name} (was ${event.lastCommonValue.name})`;
           updateDrink(event.relativePath, name).then(renderDrinks);
         }
+      } else {
+        console.log('Change from '+event.origin+'', event);
       }
     });
 
